@@ -299,33 +299,43 @@ exports.verifyEmail = async (req, res) => {
 
 // ─── GOOGLE PROFILE (popup / access-token flow) ───────────────────────────────
 // POST /api/auth/google-profile
-// Body: { googleId, email, name, picture }
+// Body: { googleId, email, name, picture, role? }
 // Called after frontend fetches profile from Google's userinfo endpoint using
 // an access token — no ID token verification needed here.
+// The optional `role` field (e.g. 'client') is used when creating brand-new
+// Google accounts so they land with the correct portal role.
+// Existing accounts always keep their existing role unchanged.
 exports.googleProfile = async (req, res) => {
     try {
-        const { googleId, email, name, picture } = req.body;
+        const { googleId, email, name, picture, role } = req.body;
 
         if (!googleId || !email) {
             return res.status(400).json({ success: false, message: 'Google profile data is incomplete.' });
         }
+
+        // Whitelist allowed roles to prevent privilege escalation
+        const allowedRoles = ['architect', 'client'];
+        const assignedRole = allowedRoles.includes(role) ? role : 'architect';
 
         let user = await User.findOne({ googleId });
 
         if (!user) {
             user = await User.findOne({ email: email.toLowerCase() });
             if (user) {
+                // Existing email account — link Google ID, never change role
                 user.googleId      = googleId;
                 user.emailVerified = true;
                 if (picture && !user.avatar) user.avatar = picture;
                 await user.save({ validateBeforeSave: false });
             } else {
+                // Brand-new user — use the requested role (client or architect)
                 user = new User({
                     name,
                     email: email.toLowerCase(),
                     googleId,
                     avatar: picture || '',
                     emailVerified: true,
+                    role: assignedRole,
                 });
                 await user.save({ validateBeforeSave: false });
 

@@ -1419,6 +1419,11 @@
                     </div>
                     <button type="submit" class="form-submit"><i class="fas fa-sign-in-alt"></i> Sign In</button>
                 </form>
+                <div class="auth-divider"><span>OR</span></div>
+                <div id="clientGoogleBtnContainer" style="display:flex;justify-content:center;min-height:44px;margin-top:-50px;"></div>
+                <button type="button" id="clientGoogleFallbackBtn" onclick="clientLoginWithGoogle()" class="form-submit" style="display:none;background:transparent;color:#fffdfd;border:1px solid rgba(255,255,255,0.25);gap:10px;">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" style="width:18px;height:18px;flex-shrink:0;"> Continue with Google
+                </button>
                 <p class="form-switch">Don't have an account? <a href="#" onclick="showRegister()">Sign up free</a></p>
                 <p class="form-switch" style="margin-top:0.5rem"><a href="index.html" style="color:var(--slate-2);font-size:0.8rem"><i class="fas fa-arrow-left"></i> Back to Architect Portal</a></p>
             </div>
@@ -1452,6 +1457,11 @@
                             </div>
                         </div>
                         <button type="button" class="form-submit" onclick="goToStep(2)">Next <i class="fas fa-arrow-right"></i></button>
+                        <div class="auth-divider"><span>OR</span></div>
+                        <div id="clientGoogleBtnContainer2" style="display:flex;justify-content:center;min-height:44px;margin-top:-50px;"></div>
+                        <button type="button" id="clientGoogleFallbackBtn2" onclick="clientLoginWithGoogle()" class="form-submit" style="display:none;background:transparent;color:#fffdfd;border:1px solid rgba(255,255,255,0.25);gap:10px;">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" style="width:18px;height:18px;flex-shrink:0;"> Continue with Google
+                        </button>
                     </div>
 
                     <!-- STEP 2 -->
@@ -2277,6 +2287,143 @@ function clientExpandFaq(index) {
         'SmartArch works best on Chrome, Firefox, Safari, and Edge (latest versions).'
     ];
     alert(answers[index] || 'More info coming soon.');
+}
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     GOOGLE SIGN-IN — Client Portal
+     Mirrors architect portal (index.html) exactly, but:
+       • Uses clientApi base URL (http://localhost:5000/api)
+       • Passes role:'client' so new Google accounts get client role
+       • Stores token as client_token
+       • Redirects to client-dashboard.html after success
+     No existing functions are modified.
+════════════════════════════════════════════════════════════════════════════ -->
+<script src="https://accounts.google.com/gsi/client"></script>
+<script>
+(function () {
+    var metaClientId = document.querySelector('meta[name="google-client-id"]');
+    var clientId = metaClientId ? metaClientId.content.trim() : '';
+
+    // IDs of our two fallback buttons (login form + register step 1)
+    var fallbackIds = ['clientGoogleFallbackBtn', 'clientGoogleFallbackBtn2'];
+
+    function showFallbackButtons() {
+        fallbackIds.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'flex';
+        });
+    }
+
+    if (!clientId || clientId === 'YOUR_GOOGLE_CLIENT_ID_HERE') {
+        console.warn('SmartArch Client: GOOGLE_CLIENT_ID not set — showing fallback buttons.');
+        showFallbackButtons();
+        window.clientLoginWithGoogle = function () {
+            alert('Google Sign-In is not configured yet.\nSet GOOGLE_CLIENT_ID in the <meta> tag and .env file.');
+        };
+        return;
+    }
+
+    function initClientGoogle() {
+        if (typeof google === 'undefined' || !google.accounts) {
+            console.warn('SmartArch Client: Google GSI script failed to load.');
+            showFallbackButtons();
+            return;
+        }
+
+        // OAuth2 token client — opens native Google account-picker popup
+        var tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: 'openid email profile',
+            callback: function (tokenResponse) {
+                if (tokenResponse.error) {
+                    if (window.showToast) showToast('Google Sign-In was cancelled.', 'info');
+                    return;
+                }
+                handleClientGoogleAccessToken(tokenResponse.access_token);
+            }
+        });
+
+        // clientLoginWithGoogle is called by our custom buttons
+        window.clientLoginWithGoogle = function () {
+            tokenClient.requestAccessToken({ prompt: 'select_account' });
+        };
+
+        // Show our custom styled buttons
+        showFallbackButtons();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initClientGoogle);
+    } else {
+        initClientGoogle();
+    }
+})();
+
+// Called after receiving a Google access token.
+// Fetches the user's Google profile, then sends it to our backend
+// with role:'client' so new accounts are created as clients.
+async function handleClientGoogleAccessToken(accessToken) {
+    try {
+        showLoading('Signing in with Google...');
+
+        // 1. Fetch user profile from Google
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: 'Bearer ' + accessToken }
+        });
+        const profile = await res.json();
+
+        if (!profile.email) {
+            hideLoading();
+            showToast('Could not get account info from Google. Try again.', 'error');
+            return;
+        }
+
+        // 2. Send to backend — pass role:'client' so new Google users get client role
+        const resp = await fetch(CLIENT_API + '/auth/google-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                googleId: profile.sub,
+                email:    profile.email,
+                name:     profile.name,
+                picture:  profile.picture,
+                role:     'client'          // ensures new accounts are created as clients
+            })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            hideLoading();
+            showToast(data.message || 'Google sign-in failed. Please try again.', 'error');
+            return;
+        }
+
+        // 3. Store as client_token (matching the rest of the client portal)
+        localStorage.setItem('client_token', data.token);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        clientApi.setToken(data.token);
+
+        // Cache avatar if present
+        if (data.user && data.user.avatar) {
+            const uid = data.user.id || data.user._id || 'guest';
+            localStorage.setItem('user_avatar_' + uid, data.user.avatar);
+        }
+
+        hideLoading();
+        showToast('Signed in with Google!', 'success');
+        if (typeof closeModal === 'function') closeModal();
+
+        // 4. Redirect to client dashboard
+        setTimeout(function () {
+            window.location.href = 'client-dashboard.html';
+        }, 900);
+
+    } catch (error) {
+        if (typeof hideLoading === 'function') hideLoading();
+        if (typeof showToast === 'function') showToast(error.message || 'Google sign-in failed. Please try again.', 'error');
+    }
 }
 </script>
 </body>

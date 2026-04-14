@@ -174,6 +174,22 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
 .arch-rating-star{font-size:0.7rem;color:#f59e0b;}
 .arch-rating-star.empty{color:#334155;}
 
+/* ── FLOOR VIEW BAR (interior / walkthrough modes) ── */
+.floor-view-bar{display:none;align-items:center;gap:4px;padding:0 0.5rem;flex-shrink:0;border-left:1px solid var(--border);margin-left:0.25rem;}
+.floor-view-bar.visible{display:flex;}
+.fvb-label{font-size:0.62rem;font-weight:700;color:var(--dark);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;margin-right:2px;}
+.fvb-btn{display:flex;align-items:center;gap:3px;padding:3px 9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#8899bb;border-radius:5px;font-size:0.7rem;cursor:pointer;transition:all .18s;white-space:nowrap;outline:none;}
+.fvb-btn:hover{background:rgba(0,212,200,0.15);color:var(--primary);}
+.fvb-btn.active{background:rgba(0,212,200,0.2);border-color:rgba(0,212,200,0.5);color:var(--primary);font-weight:700;}
+
+/* ── WALKTHROUGH FLOOR SWITCHER overlay ── */
+.walk-floor-sw{position:absolute;top:1rem;right:1rem;display:none;flex-direction:column;gap:5px;z-index:25;}
+.walk-floor-sw.visible{display:flex;}
+.walk-floor-sw-label{font-size:0.6rem;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:.07em;text-align:center;}
+.walk-floor-btn{padding:5px 12px;background:rgba(15,23,42,0.88);border:1px solid var(--border);border-radius:8px;color:var(--slate);font-size:0.75rem;font-weight:600;cursor:pointer;transition:all 0.15s;backdrop-filter:blur(8px);text-align:center;white-space:nowrap;}
+.walk-floor-btn:hover{border-color:var(--primary);color:var(--primary);}
+.walk-floor-btn.active{background:rgba(0,212,200,0.18);border-color:var(--primary);color:var(--primary);}
+
 @media(max-width:640px){
   .info-panel{display:none;}
   .topbar-arch{display:none;}
@@ -227,6 +243,11 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
   <button class="vtab" id="tab-wireframe"          onclick="switchMode('wireframe')"> <i class="fas fa-vector-square"></i>  Wireframe</button>
   <div class="vtab-sep"></div>
   <button class="vtab" id="tab-walkthrough"        onclick="switchMode('walkthrough')"><i class="fas fa-walking"></i>       Walkthrough</button>
+  <!-- Floor view bar (3D + walkthrough) -->
+  <div class="floor-view-bar" id="floorViewBar">
+    <span class="fvb-label"><i class="fas fa-layer-group" style="margin-right:3px;"></i>Floor</span>
+    <!-- buttons injected by updateFloorViewBar() -->
+  </div>
   <!-- Open top toggle (interior/dollhouse only) -->
   <label class="open-top-toggle" id="openTopToggle">
     <input type="checkbox" id="openTopChk" checked onchange="refreshInterior()"> Open Top
@@ -314,6 +335,12 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
     </div>
     <div class="walk-hint" id="walkHint" style="display:none;">
       <i class="fas fa-mouse" style="margin-right:4px;"></i> Drag to look around · WASD or buttons to move
+    </div>
+
+    <!-- Walkthrough floor switcher (shown only in walkthrough mode with multiple floors) -->
+    <div class="walk-floor-sw" id="walkFloorSw">
+      <div class="walk-floor-sw-label"><i class="fas fa-layer-group"></i> Floor</div>
+      <!-- buttons injected by updateWalkFloorSwitcher() -->
     </div>
   </div>
 </div>
@@ -868,6 +895,8 @@ let projectData = null;
 let shareId     = null;
 let currentMode = '2d';
 let activeFloorIdx = 0;
+let _isolated3DFloor = -1;   // -1 = all floors; ≥0 = show that floor only
+let _walkthroughFloorIdx = 0; // which floor the walkthrough is currently on
 
 // 2D pan/zoom
 let pan2D = {x:0,y:0}, zoom2DScale = 1;
@@ -940,6 +969,9 @@ async function init(){
     buildInfoPanel();
     hideLoader();
     draw2D();
+    // Populate floor view bar (hidden until a 3D mode is selected, but pre-built)
+    updateFloorViewBar();
+    updateWalkFloorSwitcher();
     // Check if client should see rating prompt (after brief delay)
     setTimeout(()=>checkAndShowRatingPrompt(), 3000);
   }catch(err){
@@ -1259,6 +1291,197 @@ function setActiveFloor(idx){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  FLOOR VIEW BAR — per-floor isolation in 3D / interior modes
+// ─────────────────────────────────────────────────────────────────────────────
+function updateFloorViewBar(){
+  const bar = document.getElementById('floorViewBar');
+  if(!bar || !projectData) return;
+  const floors = projectData.floors || [];
+  const isVisible = INTERIOR_MODES.has(currentMode);
+  bar.classList.toggle('visible', isVisible);
+  if(!isVisible) return;
+
+  let html = `<button class="fvb-btn ${_isolated3DFloor===-1?'active':''}" data-fi="-1" onclick="viewFloor3D(-1)" title="Show all floors"><i class="fas fa-layer-group"></i> All</button>`;
+  floors.forEach((f, i) => {
+    html += `<button class="fvb-btn ${_isolated3DFloor===i?'active':''}" data-fi="${i}" onclick="viewFloor3D(${i})" title="View ${f.name||'Floor '+(i+1)} in 3D"><i class="fas fa-building"></i> F${i+1}</button>`;
+  });
+  bar.innerHTML = `<span class="fvb-label"><i class="fas fa-layer-group" style="margin-right:3px;"></i>Floor</span>` + html;
+}
+
+function viewFloor3D(floorIdx){
+  _isolated3DFloor = floorIdx;
+  // update active state on buttons
+  document.querySelectorAll('.fvb-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.fi) === floorIdx));
+  if(!INTERIOR_MODES.has(currentMode) || !projectData) return;
+  // Rebuild interior with only the selected floor (mirrors architect.html viewFloor logic)
+  cleanupInterior();
+  const intDiv = document.getElementById('interiorContainer');
+  intDiv.style.display = 'block';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if(!projectData) return;
+    interiorActive = true;
+    const viewData = floorIdx === -1
+      ? projectData
+      : {...projectData, floors: [projectData.floors[floorIdx]]};
+    window.initInteriorView(viewData);
+    if(window._setInteriorSubView) window._setInteriorSubView(currentMode);
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  WALKTHROUGH FLOOR SWITCHER — teleport between floors in walkthrough mode
+// ─────────────────────────────────────────────────────────────────────────────
+function updateWalkFloorSwitcher(){
+  const sw = document.getElementById('walkFloorSw');
+  if(!sw || !projectData) return;
+  const floors = projectData.floors || [];
+  const isWalk = currentMode === 'walkthrough';
+  // Only show if walkthrough AND more than one floor
+  sw.classList.toggle('visible', isWalk && floors.length > 1);
+  if(!isWalk || floors.length <= 1){ sw.innerHTML = ''; return; }
+
+  let html = `<div class="walk-floor-sw-label"><i class="fas fa-layer-group"></i> Floor</div>`;
+  // Render in descending order (top floor first — feels natural)
+  for(let i = floors.length - 1; i >= 0; i--){
+    const f = floors[i];
+    html += `<button class="walk-floor-btn ${_walkthroughFloorIdx===i?'active':''}" onclick="switchWalkthroughFloor(${i})">${f.name || 'Floor '+(i+1)}</button>`;
+  }
+  sw.innerHTML = html;
+}
+
+function switchWalkthroughFloor(floorIdx){
+  if(floorIdx === _walkthroughFloorIdx) return;
+  _walkthroughFloorIdx = floorIdx;
+
+  // Update button states immediately
+  document.querySelectorAll('.walk-floor-btn').forEach(b => {
+    const fi = parseInt(b.getAttribute('onclick').match(/\d+/)[0]);
+    b.classList.toggle('active', fi === floorIdx);
+  });
+
+  if(!projectData) return;
+  const floors = projectData.floors || [];
+  const W = projectData.totalWidth || 20;
+  const D = projectData.totalDepth || 15;
+
+  // Compute cumulative Y base for this floor
+  let floorBaseY = 0;
+  for(let i = 0; i < floorIdx; i++){
+    floorBaseY += floors[i]?.height || 2.7;
+  }
+
+  // Rebuild the full multi-floor scene so all floors are visible (player just changes Y)
+  cleanupInterior();
+  const intDiv = document.getElementById('interiorContainer');
+  intDiv.style.display = 'block';
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if(!projectData) return;
+    interiorActive = true;
+    window.initInteriorView(projectData);
+    if(window._setInteriorSubView) window._setInteriorSubView('interior');
+
+    requestAnimationFrame(() => {
+      // Activate walkthrough from the chosen floor's Y level
+      activateWalkthroughModeOnFloor(floorIdx, floorBaseY);
+    });
+  }));
+}
+
+function activateWalkthroughModeOnFloor(floorIdx, floorBaseY){
+  const scene    = window._interiorScene;
+  const renderer = window._interiorRenderer;
+  if(!scene || !renderer) return;
+
+  if(window._interiorAnimId){ cancelAnimationFrame(window._interiorAnimId); window._interiorAnimId=null; }
+
+  const p = projectData;
+  const W = p.totalWidth||20, D = p.totalDepth||15;
+  const floors = p.floors||[];
+  const targetFloor = floors[floorIdx] || floors[0];
+
+  // Pick start room on the target floor
+  const firstRoom = (targetFloor.rooms||[]).find(r=>r.type!=='staircase') || {x:W*0.3, z:D*0.3, width:4, depth:4};
+  const startX = -W/2 + (firstRoom.x||0) + (firstRoom.width||4)/2;
+  const startZ = -D/2 + (firstRoom.z||0) + (firstRoom.depth||4)/2;
+  const startY = floorBaseY + 0.22 + 1.65;
+
+  const canvas = window._interiorCanvas || renderer.domElement;
+  const cW = canvas.clientWidth||800;
+  const cH = canvas.clientHeight||600;
+  const fpsCam = new THREE.PerspectiveCamera(75, cW/cH, 0.05, 300);
+  fpsCam.position.set(startX, startY, startZ);
+  fpsCam.rotation.order = 'YXZ';
+  window._interiorCamera = fpsCam;
+  window._fpMode = true;
+
+  walkPos   = {x: startX, y: startY, z: startZ};
+  walkYaw   = 0;
+  walkPitch = 0;
+  walkKeys  = {};
+
+  // Re-attach all FPS listeners
+  _walkFpsListeners.forEach(([el,ev,fn])=>{ try{el.removeEventListener(ev,fn);}catch(e){} });
+  _walkFpsListeners = [];
+
+  function addL(el, ev, fn, opts){ el.addEventListener(ev,fn,opts||false); _walkFpsListeners.push([el,ev,fn]); }
+
+  const onDown = e=>{_walkFpsDrag=true;_walkFpsLX=e.clientX;_walkFpsLY=e.clientY;};
+  const onUp   = ()=>_walkFpsDrag=false;
+  const onMove = e=>{
+    if(!_walkFpsDrag)return;
+    walkYaw  -=(e.clientX-_walkFpsLX)*0.003;
+    walkPitch = Math.max(-1.2,Math.min(1.2,walkPitch-(e.clientY-_walkFpsLY)*0.003));
+    _walkFpsLX=e.clientX; _walkFpsLY=e.clientY;
+  };
+  addL(canvas,'mousedown',onDown); addL(document,'mouseup',onUp); addL(document,'mousemove',onMove);
+
+  const onTD = e=>{_walkFpsDrag=true;_walkFpsLX=e.touches[0].clientX;_walkFpsLY=e.touches[0].clientY;};
+  const onTE = ()=>_walkFpsDrag=false;
+  const onTM = e=>{
+    if(!_walkFpsDrag)return;
+    walkYaw  -=(e.touches[0].clientX-_walkFpsLX)*0.003;
+    walkPitch = Math.max(-1.2,Math.min(1.2,walkPitch-(e.touches[0].clientY-_walkFpsLY)*0.003));
+    _walkFpsLX=e.touches[0].clientX; _walkFpsLY=e.touches[0].clientY;
+    e.preventDefault();
+  };
+  addL(canvas,'touchstart',onTD); addL(document,'touchend',onTE); addL(document,'touchmove',onTM,{passive:false});
+
+  const onKD = e=>walkKeys[e.key.toLowerCase()]=true;
+  const onKU = e=>walkKeys[e.key.toLowerCase()]=false;
+  addL(document,'keydown',onKD); addL(document,'keyup',onKU);
+
+  const onResize = ()=>{
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    if(w&&h){renderer.setSize(w,h);fpsCam.aspect=w/h;fpsCam.updateProjectionMatrix();}
+  };
+  addL(window,'resize',onResize);
+
+  if(_walkFpsId) cancelAnimationFrame(_walkFpsId);
+  function fpsTick(){
+    _walkFpsId = requestAnimationFrame(fpsTick);
+    const spd = 0.07;
+    const fx = Math.sin(walkYaw), fz = Math.cos(walkYaw);
+    if(walkKeys['w']||walkKeys['arrowup'])   {walkPos.x+=fx*spd; walkPos.z-=fz*spd;}
+    if(walkKeys['s']||walkKeys['arrowdown']) {walkPos.x-=fx*spd; walkPos.z+=fz*spd;}
+    if(walkKeys['a']||walkKeys['arrowleft']) {walkPos.x-=fz*spd; walkPos.z-=fx*spd;}
+    if(walkKeys['d']||walkKeys['arrowright']){walkPos.x+=fz*spd; walkPos.z+=fx*spd;}
+    walkPos.x = Math.max(-W/2+0.3, Math.min(W/2-0.3, walkPos.x));
+    walkPos.z = Math.max(-D/2+0.3, Math.min(D/2-0.3, walkPos.z));
+    fpsCam.position.set(walkPos.x, walkPos.y, walkPos.z);
+    fpsCam.rotation.y = walkYaw;
+    fpsCam.rotation.x = walkPitch;
+    scene.children.forEach((c,i)=>{
+      if(c.isPointLight&&c.userData.baseIntensity!==undefined){
+        c.intensity=c.userData.baseIntensity+Math.sin(Date.now()*0.0008*(1+i*0.2)+i)*0.04;
+      }
+    });
+    renderer.render(scene, fpsCam);
+  }
+  fpsTick();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  MODE SWITCHING
 // ─────────────────────────────────────────────────────────────────────────────
 const MODE_META={
@@ -1297,6 +1520,7 @@ function switchMode(mode){
   const layerS    = document.getElementById('layerStrip');
   const openTopT  = document.getElementById('openTopToggle');
   const camPA     = document.getElementById('camPresetArea');
+  const walkFlSw  = document.getElementById('walkFloorSw');
 
   // hide all
   canvas2d.style.display='none';
@@ -1308,27 +1532,37 @@ function switchMode(mode){
   layerS.style.display='none';
   openTopT.style.display='none';
   camPA.style.display='none';
+  if(walkFlSw) walkFlSw.classList.remove('visible');
 
   if(mode==='2d'){
     canvas2d.style.display='block';
     cc.style.display='flex';
     draw2D();
+    document.getElementById('floorViewBar')?.classList.remove('visible');
   } else if(INTERIOR_MODES.has(mode)){
     intDiv.style.display='block';
     layerS.style.display='flex';
     openTopT.style.display='flex';
     camPA.style.display='block';
+    // Reset floor isolation when entering a new 3D mode
+    _isolated3DFloor = -1;
+    updateFloorViewBar();
     // Single rAF is enough — we read from canvasWrap which is always visible
     requestAnimationFrame(()=>buildInterior(mode));
   } else if(mode==='wireframe'){
     threeDiv.style.display='block';
-    buildThree(true,false);
+    document.getElementById('floorViewBar')?.classList.remove('visible');
+    buildThree();
   } else if(mode==='walkthrough'){
     intDiv.style.display='block';
     layerS.style.display='flex';
     camPA.style.display='block';
     walkHud.style.display='flex';
     walkHint.style.display='block';
+    document.getElementById('floorViewBar')?.classList.remove('visible');
+    // Reset to floor 0 when entering walkthrough
+    _walkthroughFloorIdx = 0;
+    updateWalkFloorSwitcher();
     const lrRoof = document.getElementById('layerRoof');
     if(lrRoof) lrRoof.checked=false;
     requestAnimationFrame(()=>{
@@ -1500,64 +1734,263 @@ function reset2D(){zoom2DScale=1;pan2D={x:0,y:0};draw2D();}
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  WIREFRAME 3D (Three.js path — wireframe & walkthrough)
+//  FULL 3D SCENE — Wireframe mode (matches architect studio quality)
+//  Ports _build3DScene + all helper functions from architect.js inline.
+//  Wireframe is applied as a material toggle on top of the solid scene.
 // ─────────────────────────────────────────────────────────────────────────────
-function buildThree(wireframe){
-  cleanupThree();
-  const container=document.getElementById('threeContainer');container.innerHTML='';
-  const W3=container.clientWidth||800,H3=container.clientHeight||600;
-  const p=projectData,{totalWidth:W,totalDepth:D,floors=[]}=p;
-  const numFloors=floors.length,floorH=floors[0]?.height||2.7;
-  let totalH=0;floors.forEach(f=>totalH+=f.height||floorH);
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0x0d1117);
-  threeScene=scene;
-  const camera=new THREE.PerspectiveCamera(50,W3/H3,0.1,800);
-  const dist=Math.max(W,D)*1.4+numFloors*floorH;
-  camera.position.set(dist*0.7,dist*0.65,dist*0.7);camera.lookAt(0,totalH/2,0);
-  threeCamera=camera;
-  const renderer=new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(W3,H3);
-  renderer.domElement.style.cssText='display:block;width:100%;height:100%;position:absolute;top:0;left:0;';
-  container.appendChild(renderer.domElement);threeRenderer=renderer;
-  // Wireframe geometry
-  const edgeMat=new THREE.LineBasicMaterial({color:0x00d4c8,linewidth:1});
-  const geo=new THREE.BoxGeometry(W,0.2,D);
-  scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),edgeMat));
-  let baseY=0.22;
-  floors.forEach((floor,fi)=>{
-    const rooms=floor.rooms||[],fH=floor.height||floorH;
-    rooms.forEach(room=>{
-      const rg=new THREE.BoxGeometry(room.width,fH,room.depth||3);
-      const rGeo=new THREE.EdgesGeometry(rg);
-      const line=new THREE.LineSegments(rGeo,edgeMat.clone());
-      line.position.set(-W/2+room.x+room.width/2,baseY+fH/2,-D/2+(room.z||0)+(room.depth||3)/2);
-      scene.add(line);
-    });
-    baseY+=fH;
-  });
-  // Roof
-  const peak=3.5,rW=W/2+0.8,rD=D/2+0.8;
-  const rv=new Float32Array([-rW,baseY,-rD,rW,baseY,-rD,rW,baseY,rD,-rW,baseY,rD,0,baseY+peak,0]);
-  const ri=[0,4,1,1,4,2,2,4,3,3,4,0,0,1,2,0,2,3];
-  const rg2=new THREE.BufferGeometry();rg2.setAttribute('position',new THREE.BufferAttribute(rv,3));rg2.setIndex(ri);
-  scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(rg2),new THREE.LineBasicMaterial({color:0x7c3aed})));
 
-  const controls=new THREE.OrbitControls(camera,renderer.domElement);
-  controls.enableDamping=true;controls.dampingFactor=0.08;
-  threeControls=controls;
-  function animThree(){threeAnimId=requestAnimationFrame(animThree);controls.update();renderer.render(scene,camera);}
-  animThree();
-  window.addEventListener('resize',()=>{
-    const w=container.clientWidth,h=container.clientHeight;
-    if(threeRenderer&&w&&h){threeRenderer.setSize(w,h);threeCamera.aspect=w/h;threeCamera.updateProjectionMatrix();}
+// ── Material helpers (mirrored from architect.js) ────────────────────────────
+function _stdMat(color,roughness=0.7,metalness=0){return new THREE.MeshStandardMaterial({color,roughness,metalness});}
+function _getWallMat(style){return({minimalist:_stdMat(0xfafafa,0.85,0),traditional:_stdMat(0xc8997a,0.9,0),luxury:_stdMat(0x222222,0.4,0.1)})[style]||_stdMat(0x3a4a6b,0.75,0.05);}
+function _getIntWallMat(style){return({minimalist:_stdMat(0xf0f0f0,0.9,0),traditional:_stdMat(0xeadcc8,0.85,0),luxury:_stdMat(0x1a1a2e,0.5,0.15)})[style]||_stdMat(0xd0d8e8,0.8,0);}
+function _getFloorMat(style){return({minimalist:_stdMat(0xe8e8e8,0.7,0),traditional:_stdMat(0x8b6f47,0.8,0),luxury:_stdMat(0xc0b090,0.3,0.2)})[style]||_stdMat(0x556070,0.6,0.1);}
+function _getRoomFloorMat(style,roomType){const fb={bathroom:{minimalist:0xf0f0f0,traditional:0xe8e0d0,luxury:0xd4c9aa,modern:0x90a0b0},kitchen:{minimalist:0xe0e0e0,traditional:0xc8b898,luxury:0xbcab8a,modern:0x607080}}[roomType];if(fb)return _stdMat(fb[style]||fb.modern,0.5,style==='luxury'?0.3:0);return _getFloorMat(style);}
+
+const _STYLES3D={
+  modern:     {skyColor:0x0d1117,groundColor:0x1a2535,ambientInt:0.55,roofColor:0x2a3550},
+  minimalist: {skyColor:0xf0f2f5,groundColor:0xd4d8e0,ambientInt:0.8, roofColor:0xd0d0d0},
+  traditional:{skyColor:0x1a2010,groundColor:0x2d3a20,ambientInt:0.45,roofColor:0x6b4c2a},
+  luxury:     {skyColor:0x060608,groundColor:0x111118,ambientInt:0.35,roofColor:0x2a2a2a},
+  industrial: {skyColor:0x0f1218,groundColor:0x1a1e22,ambientInt:0.4, roofColor:0x3a3a3a},
+};
+
+// ── Auto-windows (exterior facing walls) ────────────────────────────────────
+function _addAutoWindows(scene,W,D,baseY,floorH,style,floor){
+  const userWins=(floor?.rooms||[]).reduce((s,r)=>s+(r.windows||[]).length,0);
+  if(userWins>0)return;
+  const winW=1.2,winH=1.1,winY=baseY+floorH*0.55;
+  const fMat=_stdMat(style==='luxury'?0xaa8800:style==='traditional'?0x8b4513:0x222222,0.5,0.2);
+  const gMat=new THREE.MeshStandardMaterial({color:0x88ccff,roughness:0.05,metalness:0.1,transparent:true,opacity:0.35});
+  const wt=0.12;
+  for(let xi=-W/2+2.5;xi<W/2-1.5;xi+=3.5){[-D/2+wt,D/2-wt].forEach(wz=>{
+    const f=new THREE.Mesh(new THREE.BoxGeometry(winW+0.1,winH+0.1,wt),fMat);f.position.set(xi,winY,wz);scene.add(f);
+    const g=new THREE.Mesh(new THREE.BoxGeometry(winW,winH,wt*0.3),gMat);g.position.set(xi,winY,wz);scene.add(g);
+  });}
+  for(let zi=-D/2+2.5;zi<D/2-1.5;zi+=3.5){[-W/2+wt,W/2-wt].forEach(wx=>{
+    const f=new THREE.Mesh(new THREE.BoxGeometry(wt,winH+0.1,winW+0.1),fMat);f.position.set(wx,winY,zi);scene.add(f);
+    const g=new THREE.Mesh(new THREE.BoxGeometry(wt*0.3,winH,winW),gMat);g.position.set(wx,winY,zi);scene.add(g);
+  });}
+}
+
+// ── Door 3D element ──────────────────────────────────────────────────────────
+function _addDoor3D(scene,room,door,ox,oz,baseY,style){
+  const doorH=2.1,doorW=door.width||0.9,wallT=0.24,pos=door.pos??0.5;
+  const fMat=_stdMat(style==='luxury'?0xaa8800:style==='traditional'?0x8b4513:0x444444,0.5,0.2);
+  const dMat=_stdMat(style==='traditional'?0x5c3317:style==='luxury'?0x0d0d1a:0x1a2040,0.6,0);
+  const voidMat=new THREE.MeshStandardMaterial({color:0x050508,roughness:1});
+  const wall=door.wall,isH=wall==='top'||wall==='bottom';
+  let dx,dz;
+  switch(wall){case'top':dx=ox+room.x+pos*room.width;dz=oz+room.z;break;case'bottom':dx=ox+room.x+pos*room.width;dz=oz+room.z+room.depth;break;case'left':dx=ox+room.x;dz=oz+room.z+pos*room.depth;break;case'right':dx=ox+room.x+room.width;dz=oz+room.z+pos*room.depth;break;default:return;}
+  const vW=isH?doorW:wallT+0.02,vD=isH?wallT+0.02:doorW;
+  const vm=new THREE.Mesh(new THREE.BoxGeometry(vW,doorH,vD),voidMat);vm.position.set(dx,baseY+doorH/2,dz);scene.add(vm);
+  const fW=isH?doorW+0.16:wallT+0.06,fD=isH?wallT+0.06:doorW+0.16;
+  const tb=new THREE.Mesh(new THREE.BoxGeometry(fW,0.1,fD),fMat);tb.position.set(dx,baseY+doorH+0.05,dz);scene.add(tb);
+  [-1,1].forEach(s=>{const upW=isH?0.09:fW,upD=isH?fD:0.09;const up=new THREE.Mesh(new THREE.BoxGeometry(upW,doorH,upD),fMat);up.position.set(dx+(isH?s*(doorW/2+0.045):0),baseY+doorH/2,dz+(isH?0:s*(doorW/2+0.045)));scene.add(up);});
+  const pW=isH?doorW-0.05:0.06,pD=isH?0.06:doorW-0.05;
+  const panel=new THREE.Mesh(new THREE.BoxGeometry(pW,doorH-0.06,pD),dMat);
+  const pivot=new THREE.Object3D();pivot.position.set(dx+(isH?-(doorW/2-0.03):0),baseY+doorH/2,dz+(isH?0:-(doorW/2-0.03)));
+  panel.position.set(isH?doorW/2-0.03:0,0,isH?0:doorW/2-0.03);pivot.rotation.y=isH?-0.42:0.42;
+  pivot.add(panel);scene.add(pivot);
+}
+
+// ── Window 3D element ────────────────────────────────────────────────────────
+function _addWindow3D(scene,room,win,ox,oz,baseY,floorH,style){
+  const winH=1.1,winW=win.width||1.0,wallT=0.24,pos=win.pos??0.5;
+  const winY=baseY+floorH*0.55;
+  const fMat=_stdMat(style==='luxury'?0x998800:style==='traditional'?0x8b4513:0x222244,0.5,0.15);
+  const gMat=new THREE.MeshStandardMaterial({color:style==='luxury'?0x99ccff:0x88eeff,roughness:0.05,metalness:0.1,transparent:true,opacity:0.38});
+  const voidMat=new THREE.MeshStandardMaterial({color:0x050508,roughness:1});
+  const wall=win.wall,isH=wall==='top'||wall==='bottom';
+  let wx,wz;
+  switch(wall){case'top':wx=ox+room.x+pos*room.width;wz=oz+room.z;break;case'bottom':wx=ox+room.x+pos*room.width;wz=oz+room.z+room.depth;break;case'left':wx=ox+room.x;wz=oz+room.z+pos*room.depth;break;case'right':wx=ox+room.x+room.width;wz=oz+room.z+pos*room.depth;break;default:return;}
+  const vW=isH?winW:wallT+0.02,vD=isH?wallT+0.02:winW;
+  const vm=new THREE.Mesh(new THREE.BoxGeometry(vW,winH,vD),voidMat);vm.position.set(wx,winY,wz);scene.add(vm);
+  const fW=isH?winW+0.12:wallT+0.06,fD=isH?wallT+0.06:winW+0.12;
+  [-1,1].forEach(s=>{const b=new THREE.Mesh(new THREE.BoxGeometry(fW,0.07,fD),fMat);b.position.set(wx,winY+s*(winH/2+0.035),wz);scene.add(b);});
+  [-1,1].forEach(s=>{const upW=isH?0.07:fW,upD=isH?fD:0.07;const up=new THREE.Mesh(new THREE.BoxGeometry(upW,winH,upD),fMat);up.position.set(wx+(isH?s*(winW/2+0.035):0),winY,wz+(isH?0:s*(winW/2+0.035)));scene.add(up);});
+  const cb=new THREE.Mesh(new THREE.BoxGeometry(isH?0.05:fW,0.05,isH?fD:0.05),fMat);cb.position.set(wx,winY,wz);scene.add(cb);
+  const glW=isH?winW-0.08:wallT*0.35,glD=isH?wallT*0.35:winW-0.08;
+  [-0.5,0.5].forEach(off=>{const g=new THREE.Mesh(new THREE.BoxGeometry(glW,winH/2-0.05,glD),gMat);g.position.set(wx,winY+off*(winH/2-0.03),wz);scene.add(g);});
+}
+
+// ── Gable roof builder ───────────────────────────────────────────────────────
+function _buildGableRoof(scene,W,D,topY,roofMat,overhang){
+  const rh=Math.min(W,D)*0.35,pitch=Math.sqrt(Math.pow(W/2+overhang,2)+Math.pow(rh,2)),angle=Math.atan2(rh,W/2+overhang);
+  [-1,1].forEach(side=>{const p=new THREE.Mesh(new THREE.BoxGeometry(pitch,0.2,D+overhang*2),roofMat);p.position.set(side*(W/4),topY+rh/2,0);p.rotation.z=side*-angle;p.castShadow=true;scene.add(p);});
+  const tri=new THREE.Shape();tri.moveTo(-W/2-overhang,0);tri.lineTo(W/2+overhang,0);tri.lineTo(0,rh);tri.closePath();
+  [-D/2-overhang,D/2+overhang].forEach(z=>{const t=new THREE.Mesh(new THREE.ShapeGeometry(tri),roofMat);t.position.set(0,topY,z);scene.add(t);});
+}
+function _buildRoof(scene,roofType,W,D,topY,style){
+  const S=_STYLES3D[style]||_STYLES3D.modern;
+  const roofMat=_stdMat(S.roofColor,style==='luxury'?0.3:0.7,style==='modern'?0.2:0),overhang=0.5;
+  if(roofType==='flat'){const r=new THREE.Mesh(new THREE.BoxGeometry(W+overhang*2,0.3,D+overhang*2),roofMat);r.position.set(0,topY+0.15,0);r.castShadow=true;scene.add(r);}
+  else if(roofType==='hip'){const g=new THREE.ConeGeometry(Math.max(W,D)*0.72,3,4);const r=new THREE.Mesh(g,roofMat);r.position.set(0,topY+1.5,0);r.rotation.y=Math.PI/4;r.castShadow=true;scene.add(r);}
+  else{_buildGableRoof(scene,W,D,topY,roofMat,overhang);}
+}
+
+// ── Front door frame ─────────────────────────────────────────────────────────
+function _addDoorFrame(scene,W,D,baseY,floorH,style){
+  const fMat=_stdMat(style==='luxury'?0xaa8800:style==='traditional'?0x8b4513:0x222222,0.5,0.2);
+  const dMat=_stdMat(style==='traditional'?0x5c3317:style==='luxury'?0x0d0d0d:0x1a1a2e,0.6,0);
+  const doorW=1.0,doorH=2.2,doorZ=-D/2+0.1;
+  const fm=new THREE.Mesh(new THREE.BoxGeometry(doorW+0.2,doorH+0.15,0.15),fMat);fm.position.set(0,baseY+doorH/2,doorZ);scene.add(fm);
+  const dm=new THREE.Mesh(new THREE.BoxGeometry(doorW,doorH,0.07),dMat);dm.position.set(0,baseY+doorH/2,doorZ);scene.add(dm);
+}
+
+// ── Simple orbit fallback ────────────────────────────────────────────────────
+function _addSimpleOrbit(domEl,camera,targetY){
+  let drag=false,px=0,py=0,theta=0.7,phi=0.6,radius=camera.position.length();
+  domEl.addEventListener('mousedown',e=>{drag=true;px=e.clientX;py=e.clientY;});
+  domEl.addEventListener('mousemove',e=>{if(!drag)return;theta-=(e.clientX-px)*0.01;phi=Math.max(0.1,Math.min(1.4,phi-(e.clientY-py)*0.01));px=e.clientX;py=e.clientY;camera.position.set(Math.sin(theta)*Math.cos(phi)*radius,Math.sin(phi)*radius,Math.cos(theta)*Math.cos(phi)*radius);camera.lookAt(0,targetY,0);});
+  domEl.addEventListener('mouseup',()=>drag=false);
+  domEl.addEventListener('wheel',e=>{radius=Math.max(5,Math.min(300,radius+e.deltaY*0.1));camera.position.multiplyScalar(radius/camera.position.length());},{passive:true});
+}
+
+// ── Main scene builder ───────────────────────────────────────────────────────
+function buildThree(){
+  cleanupThree();
+  const container=document.getElementById('threeContainer');
+  container.innerHTML='';
+  const W3=container.clientWidth||800,H3=container.clientHeight||600;
+  const p=projectData;
+  const {totalWidth:W,totalDepth:D,floors=[]}=p;
+  const style=p.style||'modern';
+  const S=_STYLES3D[style]||_STYLES3D.modern;
+  const roofType=p.specifications?.roofType||'pitched';
+  const floorH=floors[0]?.height||2.7;
+  let totalH=0; floors.forEach(f=>totalH+=f.height||floorH);
+
+  // Scene & camera
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(S.skyColor);
+  if(style!=='minimalist') scene.fog=new THREE.FogExp2(S.skyColor,0.007);
+  threeScene=scene;
+
+  const camera=new THREE.PerspectiveCamera(50,(W3/H3),0.1,800);
+  const dist=Math.max(W,D)*1.4+floors.length*floorH;
+  camera.position.set(dist*0.7,dist*0.65,dist*0.7);
+  camera.lookAt(0,totalH/2,0);
+  threeCamera=camera;
+
+  // Renderer
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(W3,H3);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=style==='luxury'?0.9:style==='minimalist'?1.1:1.0;
+  renderer.domElement.style.cssText='display:block;width:100%;height:100%;position:absolute;top:0;left:0;';
+  container.appendChild(renderer.domElement);
+  threeRenderer=renderer;
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff,S.ambientInt));
+  const sun=new THREE.DirectionalLight(style==='luxury'?0xffe8c0:style==='traditional'?0xfff5e0:0xffffff,1.0);
+  sun.position.set(W*1.5,totalH*3+20,D*1.5);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+  const sc=Math.max(W,D)+15;sun.shadow.camera.left=-sc;sun.shadow.camera.right=sc;sun.shadow.camera.top=sc;sun.shadow.camera.bottom=-sc;sun.shadow.camera.near=0.5;sun.shadow.camera.far=400;scene.add(sun);
+  const fillLight=new THREE.DirectionalLight(0xaaccff,0.3);fillLight.position.set(-W,10,-D);scene.add(fillLight);
+
+  // Ground
+  const groundSize=Math.max(W,D)*4;
+  const groundMat=style==='minimalist'?_stdMat(0xd8dce6,0.9):style==='luxury'?_stdMat(0x1a1a1a,0.3,0.1):_stdMat(S.groundColor,0.95);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(groundSize,groundSize),groundMat);
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  if(style==='modern'||style==='minimalist'){const grid=new THREE.GridHelper(groundSize,Math.floor(groundSize/2),0x334466,0x222f44);grid.material.opacity=0.25;grid.material.transparent=true;scene.add(grid);}
+
+  // Foundation slab
+  const slabMat=_stdMat(style==='luxury'?0x333333:0x888888,0.7);
+  const slab=new THREE.Mesh(new THREE.BoxGeometry(W+0.6,0.2,D+0.6),slabMat);slab.position.set(0,-0.1,0);slab.receiveShadow=true;scene.add(slab);
+
+  const wallMat=_getWallMat(style),intWallMat=_getIntWallMat(style);
+  let baseY=0;
+
+  floors.forEach((floor,floorIdx)=>{
+    const thisFloorH=floor.height||floorH;
+    const ox=-W/2,oz=-D/2;
+
+    // Inter-floor slab
+    if(floorIdx>0){const sf=new THREE.Mesh(new THREE.BoxGeometry(W+0.1,0.25,D+0.1),slabMat);sf.position.set(0,baseY-0.125,0);sf.receiveShadow=true;scene.add(sf);}
+
+    // Exterior walls
+    const wt=0.22;
+    [{w:W,d:wt,x:0,z:-D/2+wt/2},{w:W,d:wt,x:0,z:D/2-wt/2},{w:wt,d:D,x:-W/2+wt/2,z:0},{w:wt,d:D,x:W/2-wt/2,z:0}].forEach(({w:ew,d:ed,x,z})=>{
+      const wall=new THREE.Mesh(new THREE.BoxGeometry(ew,thisFloorH,ed),wallMat);wall.position.set(x,baseY+thisFloorH/2,z);wall.castShadow=true;wall.receiveShadow=true;scene.add(wall);
+    });
+
+    // Auto windows — intentionally omitted in client viewer.
+    // Only render what the architect explicitly placed (room.windows below).
+
+    // Rooms: floor tiles + interior partition walls + doors/windows
+    (floor.rooms||[]).forEach(room=>{
+      const cx=ox+room.x+room.width/2,cz=oz+room.z+room.depth/2,roomH=room.height||thisFloorH;
+      // Room floor tile
+      const rf=new THREE.Mesh(new THREE.BoxGeometry(room.width-0.02,0.08,room.depth-0.02),_getRoomFloorMat(style,room.type));rf.position.set(cx,baseY+0.04,cz);rf.receiveShadow=true;scene.add(rf);
+      // Interior partition walls (skip exterior-coincident walls)
+      [{w:room.width,d:0.1,x:cx,z:oz+room.z,isEdge:room.z<=0.01},
+       {w:room.width,d:0.1,x:cx,z:oz+room.z+room.depth,isEdge:room.z+room.depth>=D-0.01},
+       {w:0.1,d:room.depth,x:ox+room.x,z:cz,isEdge:room.x<=0.01},
+       {w:0.1,d:room.depth,x:ox+room.x+room.width,z:cz,isEdge:room.x+room.width>=W-0.01}].forEach(({w:iw,d:id,x,z,isEdge})=>{
+        if(!isEdge){const iwm=new THREE.Mesh(new THREE.BoxGeometry(iw,roomH,id),intWallMat);iwm.position.set(x,baseY+roomH/2,z);iwm.castShadow=true;iwm.receiveShadow=true;scene.add(iwm);}
+      });
+      // Point light per room
+      const rl=new THREE.PointLight(0xfff5e0,0.35,Math.max(room.width,room.depth)*1.8);rl.position.set(cx,baseY+roomH-0.4,cz);scene.add(rl);
+      (room.doors||[]).forEach(door=>_addDoor3D(scene,room,door,ox,oz,baseY,style));
+      (room.windows||[]).forEach(win=>_addWindow3D(scene,room,win,ox,oz,baseY,thisFloorH,style));
+    });
+
+    baseY+=thisFloorH;
   });
+
+  // Roof
+  const openTop=document.getElementById('openTopChk')?.checked===true;
+  if(!openTop){
+    _buildRoof(scene,roofType,W,D,totalH,style);
+  } else {
+    // Parapet walls when open top
+    const ph=totalH,parapetH=0.35;
+    [{w:W+0.4,d:0.2,x:0,z:-D/2},{w:W+0.4,d:0.2,x:0,z:D/2},{w:0.2,d:D,x:-W/2,z:0},{w:0.2,d:D,x:W/2,z:0}].forEach(({w:pw,d:pd,x,z})=>{
+      const par=new THREE.Mesh(new THREE.BoxGeometry(pw,parapetH,pd),wallMat);par.position.set(x,ph+parapetH/2,z);par.castShadow=true;scene.add(par);
+    });
+  }
+
+  // Default front door frame — intentionally omitted in client viewer.
+  // Only architect-placed doors (room.doors) are rendered above.
+
+  // Apply wireframe immediately (wireframe mode always starts in wireframe)
+  _wireframeActive3D=true;
+  scene.traverse(obj=>{if(obj.isMesh&&obj.material){const m=obj.material;if(Array.isArray(m))m.forEach(x=>{if(x.wireframe!==undefined)x.wireframe=true;});else if(m.wireframe!==undefined)m.wireframe=true;}});
+
+  // Orbit controls
+  let controls=null;
+  try{
+    const OC=THREE.OrbitControls;
+    if(OC){controls=new OC(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=0.06;controls.target.set(0,totalH/2,0);controls.minDistance=3;controls.maxDistance=300;controls.update();threeControls=controls;}
+    else{_addSimpleOrbit(renderer.domElement,camera,totalH/2);}
+  }catch(ex){_addSimpleOrbit(renderer.domElement,camera,totalH/2);}
+
+  function animThree(){threeAnimId=requestAnimationFrame(animThree);if(controls)controls.update();renderer.render(scene,camera);}
+  animThree();
+
+  const onR=()=>{const w=container.clientWidth||800,h=container.clientHeight||600;if(threeRenderer){threeRenderer.setSize(w,h);threeCamera.aspect=w/h;threeCamera.updateProjectionMatrix();}};
+  window.addEventListener('resize',onR);
+  container._threeCleanupResize=onR;
 }
 
 function cleanupThree(){
   if(threeAnimId)cancelAnimationFrame(threeAnimId);threeAnimId=null;
-  if(threeRenderer){threeRenderer.dispose();threeRenderer.domElement.remove();}
+  if(threeRenderer){
+    // remove resize listener if attached
+    const container=document.getElementById('threeContainer');
+    if(container?._threeCleanupResize)window.removeEventListener('resize',container._threeCleanupResize);
+    threeRenderer.dispose();threeRenderer.domElement.remove();
+  }
   threeRenderer=null;threeScene=null;threeCamera=null;threeControls=null;
+  _wireframeActive3D=false;
 }
+
+// Wireframe state for the full 3D scene
+let _wireframeActive3D=false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  WALKTHROUGH — uses the full interior engine, injecting an FPS camera on top
