@@ -2402,7 +2402,7 @@ async function handleClientGoogleAccessToken(accessToken) {
         // 3. Store as client_token (matching the rest of the client portal)
         localStorage.setItem('client_token', data.token);
         localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('client_user', JSON.stringify(data.user)); // FIX: was 'user', must be 'client_user' so checkClientAuth() and client-dashboard.js can read it
         clientApi.setToken(data.token);
 
         // Cache avatar if present
@@ -2414,6 +2414,7 @@ async function handleClientGoogleAccessToken(accessToken) {
         hideLoading();
         showToast('Signed in with Google!', 'success');
         if (typeof closeModal === 'function') closeModal();
+        if (typeof updateUILoggedIn === 'function') updateUILoggedIn(data.user); // FIX: update nav/UI before redirect, consistent with regular login
 
         // 4. Redirect to client dashboard
         setTimeout(function () {
