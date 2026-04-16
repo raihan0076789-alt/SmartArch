@@ -131,7 +131,17 @@ exports.getMyConnections = async (req, res) => {
             return res.json({ success: true, data: enriched });
         }
 
-        res.json({ success: true, data: conns });
+        // Populate client project brief so frontend can read project.status
+        const enrichedClient = await Promise.all(conns.map(async (conn) => {
+            const obj = conn.toObject();
+            if (conn.project) {
+                const Project = require('../models/Project');
+                const proj = await Project.findById(conn.project).select('name status type').lean();
+                obj.project = proj || obj.project;
+            }
+            return obj;
+        }));
+        res.json({ success: true, data: enrichedClient });
     } catch (err) {
         console.error('getMyConnections error:', err);
         res.status(500).json({ success: false, message: 'Server error.' });

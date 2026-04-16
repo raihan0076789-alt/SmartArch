@@ -69,6 +69,14 @@ exports.login = async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
+        // Block client accounts from logging into the architect portal
+        if (user.role === 'client') {
+            return res.status(403).json({
+                success: false,
+                message: 'This portal is for architects only. Clients please use the client portal.'
+            });
+        }
+
         // Block login until email is verified
         if (!user.emailVerified) {
             return res.status(403).json({
@@ -163,7 +171,8 @@ exports.forgotPassword = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         // Build the reset URL pointing to your frontend reset page
-        const resetUrl = `${process.env.FRONTEND_URL}/reset-password.html?token=${resetToken}`;
+        const sourceParam = user.role === 'client' ? '&source=client' : '';
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password.html?token=${resetToken}${sourceParam}`;
 
         const html = `
         <!DOCTYPE html>
@@ -232,6 +241,7 @@ exports.resetPassword = async (req, res) => {
         res.json({
             success: true,
             token,
+            user: { id: user._id, role: user.role, email: user.email, name: user.name },
             message: 'Password reset successfully. You are now logged in.'
         });
     } catch (error) {

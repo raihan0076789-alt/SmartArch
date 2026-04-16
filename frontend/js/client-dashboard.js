@@ -434,6 +434,106 @@ function comingSoon(e, name) {
 function comingSoonToast(name) {
     showToast(name + ' - coming soon!', 'info');
 }
+/* ============================================================
+   GLOBAL TOPBAR SEARCH
+   ============================================================ */
+var _globalSearchDebounce = null;
+
+var _SEARCH_CONTEXT_LABELS = {
+    dashboard:   null,           // no search on dashboard
+    architects:  'Find Architects',
+    connections: 'My Architects',
+    projects:    'My Projects',
+    shared:      'Design Submissions',
+    documents:   'Documents',
+    settings:    null,
+    support:     null,
+    market:      null
+};
+
+function openGlobalSearch() {
+    var label = _SEARCH_CONTEXT_LABELS[currentView];
+    if (!label) {
+        showToast('Search is not available in this view.', 'info');
+        return;
+    }
+    var overlay = document.getElementById('globalSearchOverlay');
+    document.getElementById('globalSearchContext').textContent = label;
+    document.getElementById('globalSearchInput').value = '';
+    overlay.style.display = 'flex';
+    setTimeout(function() { document.getElementById('globalSearchInput').focus(); }, 60);
+}
+
+function closeGlobalSearch() {
+    document.getElementById('globalSearchOverlay').style.display = 'none';
+    // Clear search so view resets
+    onGlobalSearchInput('');
+}
+
+function onGlobalSearchInput(val) {
+    clearTimeout(_globalSearchDebounce);
+    _globalSearchDebounce = setTimeout(function() {
+        _applyGlobalSearch(val.trim());
+    }, 300);
+}
+
+function _applyGlobalSearch(q) {
+    if (currentView === 'architects') {
+        // Delegates to existing architects search machinery
+        archState.search = q;
+        archState.page = 1;
+        fetchArchitects();
+
+        // Also sync the in-view search input so UI stays consistent
+        var inp = document.getElementById('searchInput');
+        if (inp) inp.value = q;
+
+    } else if (currentView === 'connections') {
+        var lower = q.toLowerCase();
+        var filtered = _allConnections.filter(function(c) {
+            var arch = c.architect || {};
+            return !q
+                || (arch.name  || '').toLowerCase().includes(lower)
+                || (arch.specialization || '').toLowerCase().includes(lower)
+                || (arch.location || '').toLowerCase().includes(lower)
+                || (c.project && (c.project.title || '').toLowerCase().includes(lower));
+        });
+        renderConnections(filtered);
+
+    } else if (currentView === 'projects') {
+        var lower = q.toLowerCase();
+        var all = window._cachedClientProjects || [];
+        var filtered = all.filter(function(p) {
+            return !q
+                || (p.title || '').toLowerCase().includes(lower)
+                || (p.projectType || '').toLowerCase().includes(lower)
+                || (p.location || '').toLowerCase().includes(lower)
+                || (p.description || '').toLowerCase().includes(lower);
+        });
+        renderClientProjects(filtered);
+
+    } else if (currentView === 'shared') {
+        var lower = q.toLowerCase();
+        var all = window._cachedSharedProjects || [];
+        var filtered = all.filter(function(s) {
+            var proj = s.project || {};
+            var arch = s.architect || {};
+            return !q
+                || (proj.title || '').toLowerCase().includes(lower)
+                || (arch.name  || '').toLowerCase().includes(lower)
+                || (proj.projectType || '').toLowerCase().includes(lower);
+        });
+        renderSharedProjects(filtered);
+
+    } else if (currentView === 'documents') {
+        // Delegates to existing docs search machinery
+        var inp = document.getElementById('docsSearchInput');
+        if (inp) {
+            inp.value = q;
+            if (typeof docsApplyFilters === 'function') docsApplyFilters();
+        }
+    }
+}
 
 /* ============================================================
    MOBILE SIDEBAR
@@ -1081,18 +1181,25 @@ async function rerequestConnection(connectionId, archId, archName, archSpec, arc
         }
     );
 }
+var activeConnTab    = 'active';
+var _allConnections  = [];
+var _allShares       = [];   // ProjectShare records — used to detect completed connections
 
 async function loadConnections() {
     var body = document.getElementById('connectionsBody');
     body.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--slate)"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem"></i><div style="margin-top:1rem">Loading...</div></div>';
 
     try {
-        var r = await fetch(CLIENT_API + '/connections/my', { headers: authHeaders() });
-        var d = await r.json();
-        if (!d.success) throw new Error();
+        var [connRes, shareRes] = await Promise.all([
+            fetch(CLIENT_API + '/connections/my', { headers: authHeaders() }),
+            fetch(CLIENT_API + '/shares/my',      { headers: authHeaders() })
+        ]);
+        var connData  = await connRes.json();
+        var shareData = await shareRes.json();
+        if (!connData.success) throw new Error();
+        _allShares = (shareData.success && shareData.data) ? shareData.data : [];
         activeConnTab = 'active';
-        switchConnTab('active');
-        renderConnections(d.data);
+        renderConnections(connData.data);
     } catch(e) {
         body.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--rose)"><i class="fas fa-exclamation-circle" style="font-size:1.5rem"></i><div style="margin-top:1rem">Could not load connections.</div></div>';
     }
@@ -1101,41 +1208,43 @@ async function loadConnections() {
 function renderConnections(conns) {
     _allConnections = conns;
 
-    // Update nav badge
+    // Nav badge — pending + unread
     var pending = conns.filter(function(c) { return c.status === 'pending'; }).length;
     var unread  = conns.filter(function(c) { return c.unreadByClient > 0; }).length;
     var badge   = document.getElementById('connNavBadge');
-    if (pending + unread > 0) {
-        badge.textContent = pending + unread;
-        badge.style.display = '';
-    } else {
-        badge.style.display = 'none';
-    }
+    if (pending + unread > 0) { badge.textContent = pending + unread; badge.style.display = ''; }
+    else { badge.style.display = 'none'; }
 
     _updateConnTabBadges(conns);
-    _renderConnTab(activeConnTab);
+    switchConnTab('active');
+}
+
+// ── Determine if a connection's architect has completed a project for this client ──
+function _isCompletedWithArchitect(conn) {
+    var archId = conn.architect && (conn.architect._id || conn.architect.id || conn.architect);
+    if (!archId) return false;
+    archId = String(archId);
+    return _allShares.some(function(s) {
+        var shareArchId = s.sharedBy && (s.sharedBy._id || s.sharedBy.id || s.sharedBy);
+        if (String(shareArchId) !== archId) return false;
+        var proj = s.project;
+        return proj && typeof proj === 'object' && proj.status === 'completed';
+    });
 }
 
 function switchConnTab(tab) {
     activeConnTab = tab;
-    ['active','completed','history'].forEach(function(t) {
-        document.getElementById('connTab-' + t).classList.toggle('active', t === tab);
+    ['active','completed','pending','history'].forEach(function(t) {
+        var el = document.getElementById('connTab-' + t);
+        if (el) el.classList.toggle('active', t === tab);
     });
     _renderConnTab(tab);
 }
 
-function _isProjectCompleted(c) {
-    var proj = c.project;
-    if (proj && typeof proj === 'object' && proj.status) {
-        return proj.status === 'completed';
-    }
-    return false;
-}
-
 function _updateConnTabBadges(conns) {
-    var active    = conns.filter(function(c) { return c.status !== 'rejected' && !_isProjectCompleted(c); });
-    var completed = conns.filter(function(c) { return _isProjectCompleted(c); });
-    var history   = conns; // all
+    var active    = conns.filter(function(c) { return c.status === 'accepted' && !_isCompletedWithArchitect(c); });
+    var completed = conns.filter(function(c) { return _isCompletedWithArchitect(c); });
+    var pending   = conns.filter(function(c) { return c.status === 'pending'; });
 
     var set = function(id, count) {
         var el = document.getElementById('connTabBadge-' + id);
@@ -1145,19 +1254,19 @@ function _updateConnTabBadges(conns) {
     };
     set('active',    active.length);
     set('completed', completed.length);
-    set('history',   history.length);
+    set('pending',   pending.length);
+    set('history',   conns.length);
 }
 
 function _renderConnTab(tab) {
-    var body = document.getElementById('connectionsBody');
+    var body  = document.getElementById('connectionsBody');
     var conns = _allConnections;
-
     if (tab === 'active') {
-        var filtered = conns.filter(function(c) { return c.status !== 'rejected' && !_isProjectCompleted(c); });
-        _renderConnCards(filtered, body, false);
+        _renderConnCards(conns.filter(function(c) { return c.status === 'accepted' && !_isCompletedWithArchitect(c); }), body, false);
     } else if (tab === 'completed') {
-        var filtered = conns.filter(function(c) { return _isProjectCompleted(c); });
-        _renderConnCards(filtered, body, true);
+        _renderConnCards(conns.filter(function(c) { return _isCompletedWithArchitect(c); }), body, true);
+    } else if (tab === 'pending') {
+        _renderConnCards(conns.filter(function(c) { return c.status === 'pending'; }), body, false);
     } else {
         _renderConnHistory(conns, body);
     }
@@ -1165,34 +1274,36 @@ function _renderConnTab(tab) {
 
 function _renderConnCards(conns, body, isCompleted) {
     if (!conns.length) {
+        var icon = isCompleted ? 'check-circle' : (activeConnTab === 'pending' ? 'clock' : 'user-friends');
+        var title = isCompleted ? 'No completed projects yet'
+            : activeConnTab === 'pending' ? 'No pending requests' : 'No active connections';
+        var sub = isCompleted ? 'Completed project connections will appear here.'
+            : activeConnTab === 'pending' ? 'Requests you send to architects will appear here.'
+            : 'Browse architects and click Connect to send a request.';
         body.innerHTML =
             '<div class="conn-empty">' +
-                '<div class="conn-empty-icon"><i class="fas fa-' + (isCompleted ? 'check-circle' : 'user-friends') + '"></i></div>' +
-                '<div class="conn-empty-title">' + (isCompleted ? 'No completed projects yet' : 'No active connections') + '</div>' +
-                '<div class="conn-empty-sub">' + (isCompleted ? 'Completed project connections will appear here.' : 'Browse architects and click Connect to send a request.') + '</div>' +
-                (!isCompleted ? '<button class="btn-primary" onclick="showView(\'architects\')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;"><i class="fas fa-search"></i> Find Architects</button>' : '') +
+                '<div class="conn-empty-icon"><i class="fas fa-' + icon + '"></i></div>' +
+                '<div class="conn-empty-title">' + title + '</div>' +
+                '<div class="conn-empty-sub">' + sub + '</div>' +
+                (activeConnTab === 'active' ? '<button class="btn-primary" onclick="showView(\'architects\')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;"><i class="fas fa-search"></i> Find Architects</button>' : '') +
             '</div>';
         return;
     }
 
     body.innerHTML = '<div class="conn-grid">' + conns.map(function(c) {
-        var arch = c.architect || {};
-        var avatar = arch.avatar ||
-            'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=8b5cf6&color=fff&bold=true';
-        var archLastSeen = (arch && arch.lastSeen) ? arch.lastSeen : null;
-        var isOnlineConn = (typeof isOnline === 'function') ? isOnline(archLastSeen) : false;
+        var arch    = c.architect || {};
+        var avatar  = arch.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=8b5cf6&color=fff&bold=true';
+        var isOnlineConn = (typeof isOnline === 'function') ? isOnline(arch.lastSeen || null) : false;
         var onlineDot = isOnlineConn
             ? '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#10b981;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 5px #10b981;display:inline-block;flex-shrink:0;"></span>Online</span>'
             : '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#64748b;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#475569;display:inline-block;flex-shrink:0;"></span>Offline</span>';
+        var projHtml    = c.projectName ? '<div class="conn-project"><i class="fas fa-folder" style="font-size:0.65rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</div>' : '';
+        var intro       = c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '';
+        var unreadBadge = c.unreadByClient > 0 ? '<span class="conn-unread-badge">' + c.unreadByClient + ' new</span>' : '';
+        var completedBadgeHtml = isCompleted ? '<div class="conn-completed-badge"><i class="fas fa-check-circle"></i> Project Completed</div>' : '';
 
-        var projHtml  = c.projectName ? '<div class="conn-project"><i class="fas fa-folder" style="font-size:0.65rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</div>' : '';
-        var intro     = c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '';
-        var unreadBadge = (c.unreadByClient > 0) ? '<span class="conn-unread-badge">' + c.unreadByClient + ' new</span>' : '';
-
-        // Completed badge
-        var completedBadgeHtml = isCompleted
-            ? '<div class="conn-completed-badge"><i class="fas fa-check-circle"></i> Project Completed</div>'
-            : '';
+        var statusMap = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected' };
+        var statusCls = { pending: 'status-pending', accepted: 'status-accepted', rejected: 'status-rejected' };
 
         var actionBtn = '';
         if (c.status === 'accepted') {
@@ -1207,89 +1318,57 @@ function _renderConnCards(conns, body, isCompleted) {
                 '<div class="conn-rejected-note"><i class="fas fa-times-circle"></i> Request not accepted</div>' +
                 '<div class="conn-rejected-actions">' +
                     '<button class="conn-rerequest-btn" onclick="rerequestConnection(\'' + c._id + '\',\'' + esc(arch.id || arch._id) + '\',\'' + esc(arch.name) + '\',\'' + esc(arch.specialization || '') + '\',\'' + avatar + '\')">' +
-                        '<i class="fas fa-redo"></i> Re-request' +
-                    '</button>' +
+                        '<i class="fas fa-redo"></i> Re-request</button>' +
                     '<button class="conn-delete-btn" onclick="deleteRejectedConnection(\'' + c._id + '\',\'' + esc(arch.name) + '\')">' +
-                        '<i class="fas fa-trash-alt"></i> Delete' +
-                    '</button>' +
+                        '<i class="fas fa-trash-alt"></i> Delete</button>' +
                 '</div>';
         }
 
-        return `
-<div class="conn-card${isCompleted ? ' is-completed' : ''}">
+        return `<div class="conn-card${isCompleted ? ' is-completed' : ''}">
     <div class="conn-card-top">
-        <img class="conn-arch-avatar"
-             src="${avatar}"
-             alt="${esc(arch.name)}"
-             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name || 'A')}&background=8b5cf6&color=fff&bold=true'">
+        <img class="conn-arch-avatar" src="${avatar}" alt="${esc(arch.name)}"
+             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name||'A')}&background=8b5cf6&color=fff&bold=true'">
         <div class="conn-arch-info">
             <div class="conn-arch-name">${esc(arch.name)}</div>
             <div class="conn-arch-spec">${esc(arch.specialization || 'Architect')}</div>
             ${onlineDot}
-            <span class="conn-status-chip ${c.status === 'accepted' ? 'status-accepted' : c.status === 'pending' ? 'status-pending' : 'status-rejected'}">
-                ${c.status === 'accepted' ? 'Accepted' : c.status === 'pending' ? 'Pending' : 'Rejected'}
-            </span>
+            <span class="conn-status-chip ${statusCls[c.status] || ''}">${statusMap[c.status] || c.status}</span>
             ${completedBadgeHtml}
         </div>
     </div>
     ${projHtml}
     ${intro}
-    <div class="conn-card-footer">
-        ${actionBtn}
-    </div>
+    <div class="conn-card-footer">${actionBtn}</div>
 </div>`;
     }).join('') + '</div>';
 }
 
 function _renderConnHistory(conns, body) {
     if (!conns.length) {
-        body.innerHTML =
-            '<div class="conn-empty">' +
-                '<div class="conn-empty-icon"><i class="fas fa-history"></i></div>' +
-                '<div class="conn-empty-title">No history yet</div>' +
-                '<div class="conn-empty-sub">All your architect connections will be listed here.</div>' +
-            '</div>';
+        body.innerHTML = '<div class="conn-empty"><div class="conn-empty-icon"><i class="fas fa-history"></i></div><div class="conn-empty-title">No history yet</div><div class="conn-empty-sub">All your architect connections will be listed here.</div></div>';
         return;
     }
-
-    var sorted = conns.slice().sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
-
+    var sorted = conns.slice().sort(function(a,b){ return new Date(b.createdAt)-new Date(a.createdAt); });
     var rows = sorted.map(function(c) {
-        var arch = c.architect || {};
-        var avatar = arch.avatar ||
-            'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=8b5cf6&color=fff&bold=true';
-
+        var arch   = c.architect || {};
+        var avatar = arch.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true';
         var projLabel = c.projectName ? '<span class="conn-history-proj"><i class="fas fa-folder" style="font-size:0.6rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</span>' : '';
-
-        var dateLabel = c.createdAt
-            ? '<span class="conn-history-date"><i class="fas fa-calendar-alt" style="font-size:0.6rem"></i> ' + new Date(c.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) + '</span>'
-            : '';
-
-        var projCompleted = _isProjectCompleted(c);
-        var finalStatus   = projCompleted ? 'completed' : c.status;
-        var statusLabels  = { accepted: 'Active', completed: 'Completed', rejected: 'Rejected', pending: 'Pending' };
-        var statusCls     = { accepted: 'hs-accepted', completed: 'hs-completed', rejected: 'hs-rejected', pending: 'hs-pending' };
-
-        return `
-<div class="conn-history-item">
-    <img class="conn-history-avatar"
-         src="${avatar}"
-         alt="${esc(arch.name)}"
-         onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name || 'A')}&background=8b5cf6&color=fff&bold=true'">
+        var dateLabel = c.createdAt ? '<span class="conn-history-date"><i class="fas fa-calendar-alt" style="font-size:0.6rem"></i> ' + new Date(c.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) + '</span>' : '';
+        var isCompleted = _isCompletedWithArchitect(c);
+        var finalStatus = isCompleted ? 'completed' : c.status;
+        var statusLabels = { accepted:'Active', completed:'Completed', rejected:'Rejected', pending:'Pending' };
+        var statusCls    = { accepted:'hs-accepted', completed:'hs-completed', rejected:'hs-rejected', pending:'hs-pending' };
+        return `<div class="conn-history-item">
+    <img class="conn-history-avatar" src="${avatar}" alt="${esc(arch.name)}"
+         onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name||'A')}&background=8b5cf6&color=fff&bold=true'">
     <div class="conn-history-info">
         <div class="conn-history-name">${esc(arch.name)}</div>
-        <div class="conn-history-spec">${esc(arch.specialization || 'Architect')}</div>
-        <div class="conn-history-meta">
-            ${projLabel}
-            ${dateLabel}
-        </div>
+        <div class="conn-history-spec">${esc(arch.specialization||'Architect')}</div>
+        <div class="conn-history-meta">${projLabel}${dateLabel}</div>
     </div>
-    <span class="conn-history-status ${statusCls[finalStatus] || 'hs-accepted'}">
-        ${statusLabels[finalStatus] || finalStatus}
-    </span>
+    <span class="conn-history-status ${statusCls[finalStatus]||'hs-accepted'}">${statusLabels[finalStatus]||finalStatus}</span>
 </div>`;
     }).join('');
-
     body.innerHTML = '<div class="conn-history-list">' + rows + '</div>';
 }
 
@@ -2797,6 +2876,7 @@ async function loadSharedProjects() {
 
 function renderSharedProjects(shares) {
     var grid  = document.getElementById('sharedProjectsGrid');
+    window._cachedSharedProjects = shares; // cache for global search
     var badge = document.getElementById('sharedNavBadge');
 
     // Badge: count unviewed shares
@@ -3818,3 +3898,4 @@ window.docsSubmitUpload   = docsSubmitUpload;
 window.docsPreview        = docsPreview;
 window.docsClosePreview   = docsClosePreview;
 window.loadDocuments      = loadDocuments;
+
