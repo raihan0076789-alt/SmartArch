@@ -3308,3 +3308,91 @@ text-overflow: ellipsis;
     .docs-body    { padding: 1rem 1.25rem 3rem; }
     .docs-preview-modal { max-width: 100%; max-height: 100%; border-radius: 0; }
 }
+/* ═══════════════════════════════════════════════════════════════════
+   CONNECTION TABS
+═══════════════════════════════════════════════════════════════════ */
+.conn-tabs {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 1.5rem 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.conn-tab {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    padding: 0.6rem 1.25rem;
+    background: transparent;
+    color: var(--slate);
+    font-size: 0.85rem; font-weight: 600;
+    border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; transition: all 0.2s;
+    margin-bottom: -1px;
+}
+.conn-tab:hover { color: var(--white); }
+.conn-tab.active {
+    color: #a78bfa;
+    border-bottom-color: #a78bfa;
+}
+.conn-tab-badge {
+    background: rgba(139,92,246,0.18);
+    color: #a78bfa;
+    border-radius: 20px;
+    padding: 1px 7px;
+    font-size: 0.68rem; font-weight: 700;
+    min-width: 20px; text-align: center;
+    display: none;
+}
+.conn-tab-badge.visible { display: inline-block; }
+
+/* Completed card — green checkmark overlay */
+.conn-card.is-completed {
+    border-color: rgba(16,185,129,0.2);
+}
+.conn-card.is-completed:hover { border-color: rgba(16,185,129,0.4); }
+.conn-completed-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.72rem; font-weight: 700;
+    color: var(--emerald); background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.25);
+    border-radius: 20px; padding: 2px 9px; margin-top: 4px;
+}
+
+/* History tab — timeline list */
+.conn-history-list {
+    display: flex; flex-direction: column; gap: 0.75rem;
+    padding: 0.25rem 0;
+}
+.conn-history-item {
+    display: flex; align-items: center; gap: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 0.9rem 1.1rem;
+    transition: border-color 0.2s;
+}
+.conn-history-item:hover { border-color: rgba(139,92,246,0.3); }
+.conn-history-avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    object-fit: cover; border: 2px solid rgba(139,92,246,0.25); flex-shrink: 0;
+}
+.conn-history-info { flex: 1; min-width: 0; }
+.conn-history-name { font-weight: 700; font-size: 0.9rem; color: var(--white); }
+.conn-history-spec { font-size: 0.75rem; color: var(--slate); margin-top: 1px; }
+.conn-history-meta {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    margin-top: 0.4rem; align-items: center;
+}
+.conn-history-proj {
+    font-size: 0.75rem; color: var(--slate);
+    display: flex; align-items: center; gap: 0.3rem;
+}
+.conn-history-date { font-size: 0.72rem; color: #475569; }
+.conn-history-status {
+    margin-left: auto; flex-shrink: 0;
+    font-size: 0.68rem; font-weight: 700;
+    padding: 3px 10px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+}
+.conn-history-status.hs-accepted  { background: rgba(16,185,129,0.12); color: var(--emerald); border: 1px solid rgba(16,185,129,0.3); }
+.conn-history-status.hs-completed { background: rgba(99,102,241,0.12);  color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
+.conn-history-status.hs-rejected  { background: rgba(244,63,94,0.10);   color: var(--rose);    border: 1px solid rgba(244,63,94,0.25); }
+.conn-history-status.hs-pending   { background: rgba(245,158,11,0.12); color: var(--amber);   border: 1px solid rgba(245,158,11,0.3); }

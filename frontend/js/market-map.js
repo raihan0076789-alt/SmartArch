@@ -166,6 +166,7 @@ const MM = {
   INR_RATE: 83,              // 1 USD = 83 INR (update periodically)
   searchTimeout: null,
   currentCities: [...MM_CITIES],
+  showIndiaData: true,       // toggle India 10k+ dataset
   clientProjects: [],        // populated from dashboard state
   activeProjectId: null,     // project whose budget is being matched
   savedCities: {},           // { cityId: projectId } persisted to localStorage
@@ -178,25 +179,35 @@ function mmLoadLeaflet() {
   return new Promise(function (resolve) {
     if (window.L && window.L.map) { MM.leafletReady = true; resolve(true); return; }
 
-    var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-    var LEAFLET_JS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-    var HEAT_JS     = 'https://cdnjs.cloudflare.com/ajax/libs/Leaflet.heat/0.2.0/leaflet-heat.js';
+    var LEAFLET_CSS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    var LEAFLET_JS   = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    var HEAT_JS      = 'https://cdnjs.cloudflare.com/ajax/libs/Leaflet.heat/0.2.0/leaflet-heat.js';
+    var CLUSTER_CSS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css';
+    var CLUSTER_CSS2 = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css';
+    var CLUSTER_JS   = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js';
 
-    var cssEl = document.createElement('link');
-    cssEl.rel = 'stylesheet'; cssEl.href = LEAFLET_CSS;
-    document.head.appendChild(cssEl);
+    // Load CSS files immediately
+    [LEAFLET_CSS, CLUSTER_CSS, CLUSTER_CSS2].forEach(function(href) {
+      var el = document.createElement('link');
+      el.rel = 'stylesheet'; el.href = href;
+      document.head.appendChild(el);
+    });
 
-    var jsEl = document.createElement('script');
-    jsEl.src = LEAFLET_JS;
-    jsEl.onerror = function () { console.error('[MarketMap] Leaflet failed to load'); resolve(false); };
-    jsEl.onload = function () {
-      var heatEl = document.createElement('script');
-      heatEl.src = HEAT_JS;
-      heatEl.onload  = function () { MM.leafletReady = true; resolve(true); };
-      heatEl.onerror = function () { MM.leafletReady = true; resolve(true); };
-      document.head.appendChild(heatEl);
-    };
-    document.head.appendChild(jsEl);
+    function loadScript(src, cb) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = cb;
+      s.onerror = cb; // continue even if one fails
+      document.head.appendChild(s);
+    }
+
+    loadScript(LEAFLET_JS, function() {
+      // Load Heat and Cluster in parallel
+      var loaded = 0;
+      function done() { if (++loaded === 2) { MM.leafletReady = true; resolve(true); } }
+      loadScript(HEAT_JS,    done);
+      loadScript(CLUSTER_JS, done);
+    });
   });
 }
 
@@ -223,15 +234,57 @@ function mmBuildMap() {
     preferCanvas: true,
   });
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19,
-  }).addTo(MM.map);
+  // Use basemap system if available, else fallback to dark CartoDB
+  var bm = (window.MM_BASEMAPS && window.MM_BASEMAPS['dark']) || null;
+  var tileUrl  = bm ? bm.url  : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  var tileOpts = bm ? bm.opts : { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:19 };
+  window.MM_BASE_TILE_LAYER = L.tileLayer(tileUrl, tileOpts);
+  window.MM_BASE_TILE_LAYER.addTo(MM.map);
 
-  MM.markersLayer = L.layerGroup().addTo(MM.map);
+  // Use MarkerClusterGroup if available for performance with 10k+ points
+  if (window.L.markerClusterGroup) {
+    MM.markersLayer = L.markerClusterGroup({
+      chunkedLoading: true,
+      chunkInterval: 100,
+      chunkDelay: 50,
+      maxClusterRadius: 60,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      iconCreateFunction: function(cluster) {
+        var count = cluster.getChildCount();
+        var size  = count > 500 ? 46 : count > 100 ? 38 : count > 10 ? 32 : 26;
+        var bg    = count > 500 ? '#ef4444' : count > 100 ? '#f59e0b' : count > 10 ? '#00d4c8' : '#10b981';
+        return L.divIcon({
+          html: '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:'+bg+';' +
+                'border:2px solid rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;' +
+                'font-size:'+(size > 38 ? 13 : 11)+'px;font-weight:800;color:#fff;font-family:Outfit,sans-serif;' +
+                'box-shadow:0 3px 10px rgba(0,0,0,0.4);">'+count+'</div>',
+          className: '',
+          iconSize: [size, size],
+          iconAnchor: [size/2, size/2]
+        });
+      }
+    });
+    MM.markersLayer.addTo(MM.map);
+    MM.usingClusters = true;
+  } else {
+    MM.markersLayer = L.layerGroup().addTo(MM.map);
+    MM.usingClusters = false;
+  }
+
   MM.infraLayer   = L.layerGroup();
   MM.climateLayer = L.layerGroup();
+
+  // Merge India high-density dataset
+  if (window.MM_INDIA_POINTS && window.MM_INDIA_POINTS.length) {
+    var existing = MM_CITIES.filter(function(c){ return c.isIndiaPoint; });
+    if (!existing.length) {
+      window.MM_INDIA_POINTS.forEach(function(p){ MM_CITIES.push(p); });
+    }
+    MM.currentCities = [...MM_CITIES];
+    console.log('[MarketMap] Total dataset: ' + MM_CITIES.length + ' locations');
+  }
 
   // Invalidate after first tile paint
   setTimeout(function () { if (MM.map) MM.map.invalidateSize(); }, 250);
@@ -350,6 +403,8 @@ function mmApplyFilters() {
   var allowedCountries = f.continent ? (continentMap[f.continent] || []) : null;
 
   var cities = MM_CITIES.filter(function (c) {
+    // Skip India micro-points if toggle is off
+    if (c.isIndiaPoint && !MM.showIndiaData) return false;
     if (c.priceM2      > f.maxPriceM2)   return false;
     if (f.electricity  && !c.electricity) return false;
     if (f.transport    && !c.transport)   return false;
@@ -439,11 +494,70 @@ function mmRenderResults(cities) {
 function mmRenderMarkers(cities) {
   if (!MM.map || !MM.markersLayer || !window.L) return;
   var L = window.L;
-  MM.markersLayer.clearLayers();
 
-  cities.forEach(function (c, idx) {
+  // Clear existing markers properly
+  if (MM.usingClusters && MM.markersLayer.clearLayers) {
+    MM.markersLayer.clearLayers();
+  } else if (MM.markersLayer.clearLayers) {
+    MM.markersLayer.clearLayers();
+  }
+
+  // Cap render: at world zoom show named cities only; zoom ≥ 5 show India micro-points too
+  var zoom = MM.map.getZoom ? MM.map.getZoom() : 2;
+  var MAX_MARKERS = 800; // hard cap for non-cluster fallback
+
+  // Separate named cities from India micro-points
+  var namedCities = cities.filter(function(c) { return !c.isIndiaPoint; });
+  var indiaPoints = cities.filter(function(c) { return c.isIndiaPoint; });
+
+  // At low zoom, limit India points to avoid the blob
+  var pointsToRender;
+  if (MM.usingClusters) {
+    // Clusters handle thousands fine
+    pointsToRender = cities;
+  } else {
+    // No clustering: cap to avoid freeze
+    pointsToRender = namedCities.concat(indiaPoints.slice(0, Math.max(0, MAX_MARKERS - namedCities.length)));
+  }
+
+  var markers = [];
+
+  pointsToRender.forEach(function(c) {
     var score = mmAffordScore(c);
-    var size  = Math.min(30 + Math.round(score / 8), 44);
+
+    // India micro-points: tiny coloured dot, no flag emoji (much faster)
+    if (c.isIndiaPoint) {
+      var dotCol = c.tier === 'A' ? '#10b981' : c.tier === 'B' ? '#00d4c8' : c.tier === 'C' ? '#f59e0b' : '#ef4444';
+      var dotIcon = L.circleMarker([c.lat, c.lng], {
+        radius: 5,
+        fillColor: dotCol,
+        color: 'rgba(0,0,0,0.3)',
+        weight: 0.5,
+        fillOpacity: 0.82,
+        pane: 'markerPane'
+      });
+      dotIcon.bindPopup(
+        '<div class="mm-popup" style="min-width:200px">' +
+        '<div class="mm-popup-head">' +
+        '<div class="mm-popup-flag">🇮🇳</div>' +
+        '<div class="mm-popup-city" style="font-size:0.82rem">' + c.city.split(' · ')[0] + '</div>' +
+        '<div class="mm-popup-country">' + (c.state || 'India') + ' · ₹' + Math.round(c.priceM2 * MM.INR_RATE).toLocaleString('en-IN') + '/m²</div>' +
+        '</div>' +
+        '<div class="mm-popup-body">' +
+        '<div class="mm-popup-grid" style="grid-template-columns:1fr 1fr">' +
+        '<div class="mm-popup-kv"><div class="mm-popup-kv-label">Price/m²</div><div class="mm-popup-kv-val">' + mmFormatPrice(c.priceM2) + '</div></div>' +
+        '<div class="mm-popup-kv"><div class="mm-popup-kv-label">Yield</div><div class="mm-popup-kv-val">' + c.rentYield.toFixed(1) + '%</div></div>' +
+        '<div class="mm-popup-kv"><div class="mm-popup-kv-label">YoY Growth</div><div class="mm-popup-kv-val" style="color:#10b981">+' + c.yoyGrowth.toFixed(1) + '%</div></div>' +
+        '<div class="mm-popup-kv"><div class="mm-popup-kv-label">Safety</div><div class="mm-popup-kv-val">' + c.safetyIdx + '/100</div></div>' +
+        '</div></div></div>',
+        { maxWidth: 240, className: 'mm-popup-wrapper', closeButton: true }
+      );
+      markers.push(dotIcon);
+      return;
+    }
+
+    // Named city: full flag marker (existing behaviour)
+    var size = Math.min(30 + Math.round(score / 8), 44);
     var icon = L.divIcon({
       className: '',
       iconSize: [size, size],
@@ -451,11 +565,18 @@ function mmRenderMarkers(cities) {
       popupAnchor: [0, -(size + 4)],
       html: '<div class="mm-marker-icon mm-marker-' + c.tier + '" style="width:' + size + 'px;height:' + size + 'px;"><div class="mm-marker-inner">' + c.flag + '</div></div>',
     });
-    L.marker([c.lat, c.lng], { icon: icon })
-      .addTo(MM.markersLayer)
-      .bindPopup(mmBuildPopup(c, score, idx + 1), { maxWidth:300, minWidth:280, className:'mm-popup-wrapper', closeButton:true })
-      .on('click', function () { mmHighlightResult(c.id); });
+    var m = L.marker([c.lat, c.lng], { icon: icon });
+    m.bindPopup(mmBuildPopup(c, score, 0), { maxWidth: 300, minWidth: 280, className: 'mm-popup-wrapper', closeButton: true });
+    m.on('click', function() { mmHighlightResult(c.id); });
+    markers.push(m);
   });
+
+  // Add all markers at once (cluster group handles performance)
+  if (MM.usingClusters && MM.markersLayer.addLayers) {
+    MM.markersLayer.addLayers(markers);
+  } else {
+    markers.forEach(function(m) { m.addTo(MM.markersLayer); });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -792,6 +913,16 @@ function mmBindFilters() {
       mmSwitchLayer(btn.dataset.layer);
     });
   });
+
+  // India data toggle
+  var indiaToggle = document.getElementById('mm-india-toggle');
+  if (indiaToggle) {
+    indiaToggle.checked = MM.showIndiaData;
+    indiaToggle.addEventListener('change', function() {
+      MM.showIndiaData = indiaToggle.checked;
+      mmApplyFilters();
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -803,20 +934,23 @@ function mmSwitchLayer(layer) {
   if (MM.heatLayer)    MM.map.removeLayer(MM.heatLayer);
   if (MM.infraLayer)   MM.map.removeLayer(MM.infraLayer);
   if (MM.climateLayer) MM.map.removeLayer(MM.climateLayer);
-  if (MM.markersLayer) MM.markersLayer.clearLayers();
+  // Clear markers but keep cluster group attached
+  if (MM.markersLayer && MM.markersLayer.clearLayers) MM.markersLayer.clearLayers();
 
   if (layer === 'markers') {
-    if (MM.markersLayer) MM.markersLayer.addTo(MM.map);
+    if (MM.markersLayer && !MM.map.hasLayer(MM.markersLayer)) MM.markersLayer.addTo(MM.map);
     mmRenderMarkers(MM.currentCities);
   } else if (layer === 'heat') {
+    if (MM.markersLayer) MM.map.removeLayer(MM.markersLayer);
     mmRenderHeat(MM.currentCities);
     if (MM.heatLayer) MM.heatLayer.addTo(MM.map);
   } else if (layer === 'infra') {
     mmLoadInfraLayer();
   } else if (layer === 'climate') {
+    if (MM.markersLayer && !MM.map.hasLayer(MM.markersLayer)) MM.markersLayer.addTo(MM.map);
     mmRenderClimateLayer(MM.currentCities);
   } else if (layer === 'arch') {
-    if (MM.markersLayer) MM.markersLayer.addTo(MM.map);
+    if (MM.markersLayer && !MM.map.hasLayer(MM.markersLayer)) MM.markersLayer.addTo(MM.map);
     mmRenderArchMarkers(MM.currentCities);
   }
 }

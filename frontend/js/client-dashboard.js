@@ -825,6 +825,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 var connectState = { architectId: null, architectName: null, selectedProjectId: null };
 var activeChatConnectionId = null;
 var chatPollTimer = null;
+var activeConnTab = 'active';
+var _allConnections = [];
 
 /* ── Open Connect Modal ──────────────────────────────────────────────── */
 async function openConnectModal(archId, archName, archSpec, archAvatar) {
@@ -1088,6 +1090,8 @@ async function loadConnections() {
         var r = await fetch(CLIENT_API + '/connections/my', { headers: authHeaders() });
         var d = await r.json();
         if (!d.success) throw new Error();
+        activeConnTab = 'active';
+        switchConnTab('active');
         renderConnections(d.data);
     } catch(e) {
         body.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--rose)"><i class="fas fa-exclamation-circle" style="font-size:1.5rem"></i><div style="margin-top:1rem">Could not load connections.</div></div>';
@@ -1095,7 +1099,7 @@ async function loadConnections() {
 }
 
 function renderConnections(conns) {
-    var body = document.getElementById('connectionsBody');
+    _allConnections = conns;
 
     // Update nav badge
     var pending = conns.filter(function(c) { return c.status === 'pending'; }).length;
@@ -1108,15 +1112,65 @@ function renderConnections(conns) {
         badge.style.display = 'none';
     }
 
+    _updateConnTabBadges(conns);
+    _renderConnTab(activeConnTab);
+}
+
+function switchConnTab(tab) {
+    activeConnTab = tab;
+    ['active','completed','history'].forEach(function(t) {
+        document.getElementById('connTab-' + t).classList.toggle('active', t === tab);
+    });
+    _renderConnTab(tab);
+}
+
+function _isProjectCompleted(c) {
+    var proj = c.project;
+    if (proj && typeof proj === 'object' && proj.status) {
+        return proj.status === 'completed';
+    }
+    return false;
+}
+
+function _updateConnTabBadges(conns) {
+    var active    = conns.filter(function(c) { return c.status !== 'rejected' && !_isProjectCompleted(c); });
+    var completed = conns.filter(function(c) { return _isProjectCompleted(c); });
+    var history   = conns; // all
+
+    var set = function(id, count) {
+        var el = document.getElementById('connTabBadge-' + id);
+        if (!el) return;
+        el.textContent = count;
+        el.classList.toggle('visible', count > 0);
+    };
+    set('active',    active.length);
+    set('completed', completed.length);
+    set('history',   history.length);
+}
+
+function _renderConnTab(tab) {
+    var body = document.getElementById('connectionsBody');
+    var conns = _allConnections;
+
+    if (tab === 'active') {
+        var filtered = conns.filter(function(c) { return c.status !== 'rejected' && !_isProjectCompleted(c); });
+        _renderConnCards(filtered, body, false);
+    } else if (tab === 'completed') {
+        var filtered = conns.filter(function(c) { return _isProjectCompleted(c); });
+        _renderConnCards(filtered, body, true);
+    } else {
+        _renderConnHistory(conns, body);
+    }
+}
+
+function _renderConnCards(conns, body, isCompleted) {
     if (!conns.length) {
         body.innerHTML =
             '<div class="conn-empty">' +
-                '<div class="conn-empty-icon"><i class="fas fa-user-friends"></i></div>' +
-                '<div class="conn-empty-title">No connections yet</div>' +
-                '<div class="conn-empty-sub">Browse architects and click Connect to send a request.</div>' +
-                `<button class="btn-primary" onclick="showView('architects')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;">` +
-                    '<i class="fas fa-search"></i> Find Architects' +
-                '</button>' +
+                '<div class="conn-empty-icon"><i class="fas fa-' + (isCompleted ? 'check-circle' : 'user-friends') + '"></i></div>' +
+                '<div class="conn-empty-title">' + (isCompleted ? 'No completed projects yet' : 'No active connections') + '</div>' +
+                '<div class="conn-empty-sub">' + (isCompleted ? 'Completed project connections will appear here.' : 'Browse architects and click Connect to send a request.') + '</div>' +
+                (!isCompleted ? '<button class="btn-primary" onclick="showView(\'architects\')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;"><i class="fas fa-search"></i> Find Architects</button>' : '') +
             '</div>';
         return;
     }
@@ -1127,14 +1181,18 @@ function renderConnections(conns) {
             'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=8b5cf6&color=fff&bold=true';
         var archLastSeen = (arch && arch.lastSeen) ? arch.lastSeen : null;
         var isOnlineConn = (typeof isOnline === 'function') ? isOnline(archLastSeen) : false;
-        var onlineDot    = isOnlineConn
+        var onlineDot = isOnlineConn
             ? '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#10b981;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 5px #10b981;display:inline-block;flex-shrink:0;"></span>Online</span>'
             : '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#64748b;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#475569;display:inline-block;flex-shrink:0;"></span>Offline</span>';
-        var statusMap = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected' };
-        var statusCls = { pending: 'status-pending', accepted: 'status-accepted', rejected: 'status-rejected' };
+
         var projHtml  = c.projectName ? '<div class="conn-project"><i class="fas fa-folder" style="font-size:0.65rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</div>' : '';
         var intro     = c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '';
         var unreadBadge = (c.unreadByClient > 0) ? '<span class="conn-unread-badge">' + c.unreadByClient + ' new</span>' : '';
+
+        // Completed badge
+        var completedBadgeHtml = isCompleted
+            ? '<div class="conn-completed-badge"><i class="fas fa-check-circle"></i> Project Completed</div>'
+            : '';
 
         var actionBtn = '';
         if (c.status === 'accepted') {
@@ -1158,32 +1216,81 @@ function renderConnections(conns) {
         }
 
         return `
-<div class="conn-card">
+<div class="conn-card${isCompleted ? ' is-completed' : ''}">
     <div class="conn-card-top">
         <img class="conn-arch-avatar"
              src="${avatar}"
              alt="${esc(arch.name)}"
              onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name || 'A')}&background=8b5cf6&color=fff&bold=true'">
-
         <div class="conn-arch-info">
             <div class="conn-arch-name">${esc(arch.name)}</div>
             <div class="conn-arch-spec">${esc(arch.specialization || 'Architect')}</div>
             ${onlineDot}
-            <span class="conn-status-chip ${statusCls[c.status] || ''}">
-                ${statusMap[c.status] || c.status}
+            <span class="conn-status-chip ${c.status === 'accepted' ? 'status-accepted' : c.status === 'pending' ? 'status-pending' : 'status-rejected'}">
+                ${c.status === 'accepted' ? 'Accepted' : c.status === 'pending' ? 'Pending' : 'Rejected'}
             </span>
+            ${completedBadgeHtml}
         </div>
     </div>
-
     ${projHtml}
     ${intro}
-
     <div class="conn-card-footer">
         ${actionBtn}
     </div>
-</div>
-`;
+</div>`;
     }).join('') + '</div>';
+}
+
+function _renderConnHistory(conns, body) {
+    if (!conns.length) {
+        body.innerHTML =
+            '<div class="conn-empty">' +
+                '<div class="conn-empty-icon"><i class="fas fa-history"></i></div>' +
+                '<div class="conn-empty-title">No history yet</div>' +
+                '<div class="conn-empty-sub">All your architect connections will be listed here.</div>' +
+            '</div>';
+        return;
+    }
+
+    var sorted = conns.slice().sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+
+    var rows = sorted.map(function(c) {
+        var arch = c.architect || {};
+        var avatar = arch.avatar ||
+            'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=8b5cf6&color=fff&bold=true';
+
+        var projLabel = c.projectName ? '<span class="conn-history-proj"><i class="fas fa-folder" style="font-size:0.6rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</span>' : '';
+
+        var dateLabel = c.createdAt
+            ? '<span class="conn-history-date"><i class="fas fa-calendar-alt" style="font-size:0.6rem"></i> ' + new Date(c.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) + '</span>'
+            : '';
+
+        var projCompleted = _isProjectCompleted(c);
+        var finalStatus   = projCompleted ? 'completed' : c.status;
+        var statusLabels  = { accepted: 'Active', completed: 'Completed', rejected: 'Rejected', pending: 'Pending' };
+        var statusCls     = { accepted: 'hs-accepted', completed: 'hs-completed', rejected: 'hs-rejected', pending: 'hs-pending' };
+
+        return `
+<div class="conn-history-item">
+    <img class="conn-history-avatar"
+         src="${avatar}"
+         alt="${esc(arch.name)}"
+         onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name || 'A')}&background=8b5cf6&color=fff&bold=true'">
+    <div class="conn-history-info">
+        <div class="conn-history-name">${esc(arch.name)}</div>
+        <div class="conn-history-spec">${esc(arch.specialization || 'Architect')}</div>
+        <div class="conn-history-meta">
+            ${projLabel}
+            ${dateLabel}
+        </div>
+    </div>
+    <span class="conn-history-status ${statusCls[finalStatus] || 'hs-accepted'}">
+        ${statusLabels[finalStatus] || finalStatus}
+    </span>
+</div>`;
+    }).join('');
+
+    body.innerHTML = '<div class="conn-history-list">' + rows + '</div>';
 }
 
 /* ── Chat Modal ──────────────────────────────────────────────────────── */
