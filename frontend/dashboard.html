@@ -2067,7 +2067,7 @@
                                                 </div>
                                                 <div class="ep-field">
                                                     <label class="ep-label">Email Address</label>
-                                                    <input type="email" id="profileEmail" class="ep-input" placeholder="you@example.com">
+                                                    <input type="email" id="profileEmail" class="ep-input" placeholder="you@example.com" readonly>
                                                 </div>
                                                 <div class="ep-field">
                                                     <label class="ep-label">Company</label>
@@ -2099,9 +2099,20 @@
                                                     <label class="ep-label">Location</label>
                                                     <input type="text" id="profileLocation" class="ep-input" placeholder="e.g. Chennai, India">
                                                 </div>
-                                                <div class="ep-field">
+                                               <div class="ep-field">
                                                     <label class="ep-label">Specialization</label>
-                                                    <input type="text" id="profileSpecialization" class="ep-input" placeholder="e.g. Residential, Commercial">
+                                                    <input list="specializations" id="profileSpecialization" class="ep-input" placeholder="Select or type specialization">
+
+                                                    <datalist id="specializations">
+                                                        <option value="Residential">
+                                                        <option value="Commercial">
+                                                        <option value="Interior Design">
+                                                        <option value="Landscape">
+                                                        <option value="Urban Planning">
+                                                        <option value="Sustainable">
+                                                        <option value="Industrial">
+                                                        <option value="Restoration">
+                                                    </datalist>
                                                 </div>
                                                 <div class="ep-field">
                                                     <label class="ep-label">Years of Experience</label>
