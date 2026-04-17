@@ -149,7 +149,7 @@
                 </div>
             </div>
         </div>
-        <button class="topbar-btn" id="topbarSearchBtn" title="Search" onclick="openGlobalSearch()">
+        <button class="topbar-btn" id="topbarSearchBtn" title="Search" onclick="comingSoonToast('Search')">
             <i class="fas fa-search"></i>
         </button>
         <span id="topbarPlan" class="plan-badge plan-free" style="display:none">Free</span>
@@ -506,6 +506,27 @@
         </div>
     </div>
     <div class="proj-body">
+         <div class="cp-tabs">
+            <button class="cp-tab active" id="cpTab-all"          onclick="switchProjectTab('all')">
+                <i class="fas fa-th-large"></i> All
+                <span class="cp-tab-badge" id="cpBadge-all">0</span>
+            </button>
+            <button class="cp-tab" id="cpTab-inprogress"          onclick="switchProjectTab('inprogress')">
+                <i class="fas fa-tools"></i> In Progress
+                <span class="cp-tab-badge" id="cpBadge-inprogress">0</span>
+            </button>
+            <button class="cp-tab" id="cpTab-completed"           onclick="switchProjectTab('completed')">
+                <i class="fas fa-check-circle"></i> Completed
+                <span class="cp-tab-badge" id="cpBadge-completed">0</span>
+            </button>
+            <button class="cp-tab" id="cpTab-notconnected"        onclick="switchProjectTab('notconnected')">
+                <i class="fas fa-user-slash"></i> Not Connected
+                <span class="cp-tab-badge" id="cpBadge-notconnected">0</span>
+            </button>
+            <button class="cp-tab" id="cpTab-history"             onclick="switchProjectTab('history')">
+                <i class="fas fa-history"></i> History
+            </button>
+        </div>  
         <div id="clientProjectsGrid">
             <div style="text-align:center;padding:3rem;color:var(--slate)">
                 <i class="fas fa-spinner fa-spin" style="font-size:1.5rem"></i>
@@ -1584,7 +1605,7 @@
   </aside><!-- /mm-sidebar -->
 
   <!-- ── MAP AREA ────────────────────────────────────────────────────────── -->
-  <div class="mm-map-wrap">
+  <div class="mm-map-wrap" id="mm-map-wrap">
 
     <!-- Loading overlay -->
     <div class="mm-loading" id="mm-loading" style="display:none">
@@ -1722,6 +1743,7 @@
 
 </div><!-- /view-market -->
 
+
 <!-- ── GLOBAL SEARCH OVERLAY ─────────────────────────────────────────────── -->
 <div id="globalSearchOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,10,18,0.85);backdrop-filter:blur(6px);align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeGlobalSearch()">
     <div style="width:100%;max-width:580px;background:#0d1424;border:1px solid rgba(255,255,255,0.1);border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.6);">
@@ -1744,6 +1766,7 @@
 <script src="js/client-dashboard.js"></script>
 <script src="js/market-map-patch.js"></script>
 <script src="js/market-map.js"></script>
+<script src="js/market-map-osm.js"></script>
 
 <!-- Market Map standalone controller — does NOT touch VIEWS or showView internals -->
 <script>

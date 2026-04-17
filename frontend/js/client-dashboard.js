@@ -998,6 +998,64 @@ async function openConnectModal(archId, archName, archSpec, archAvatar) {
         listEl.innerHTML = '<div style="color:var(--slate);font-size:0.83rem">Could not load projects.</div>';
     }
 }
+async function openConnectAnotherProject(archId, archName, archSpec, archAvatar) {
+    // Close the architect profile modal first
+    closeModalDirect();
+
+    connectState.architectId   = archId;
+    connectState.architectName = archName;
+    connectState.selectedProjectId = null;
+
+    var fallback = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(archName) + '&background=8b5cf6&color=fff&bold=true';
+    document.getElementById('connectArchAvatar').src = archAvatar || fallback;
+    document.getElementById('connectArchAvatar').onerror = function() { this.src = fallback; };
+    document.getElementById('connectArchName').textContent = archName;
+    document.getElementById('connectArchSpec').textContent = archSpec || 'Architect';
+    document.getElementById('connectIntroMsg').value = '';
+
+    var listEl = document.getElementById('connectProjectList');
+    listEl.innerHTML = '<div style="color:var(--slate);font-size:0.85rem"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+
+    document.getElementById('connectBackdrop').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    try {
+        var pr = await fetch(CLIENT_API + '/client/projects', { headers: authHeaders() });
+        var pd = await pr.json();
+        // Only show projects NOT already connected to this architect
+        var allProjects  = pd.data || [];
+        var freeProjects = allProjects.filter(function(p) { return !p.hasAcceptedConnection; });
+
+        var createNewHtml = '<div style="margin-top:0.5rem">' +
+            '<button onclick="closeConnectModal();openCreateProject()" ' +
+            'style="width:100%;padding:0.5rem;border:1.5px dashed rgba(139,92,246,0.4);border-radius:9px;background:rgba(139,92,246,0.05);color:var(--violet);font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem">' +
+            '<i class="fas fa-plus" style="font-size:0.7rem"></i> Create a new project brief</button></div>';
+
+        if (!freeProjects.length) {
+            listEl.innerHTML =
+                '<div style="color:var(--slate);font-size:0.83rem;padding:0.5rem 0;line-height:1.6">' +
+                '<i class="fas fa-info-circle" style="color:var(--violet);margin-right:0.4rem"></i>' +
+                'All your projects already have an architect connected. Create a new project brief to assign to ' + esc(archName) + '.' +
+                '</div>' + createNewHtml;
+        } else {
+            listEl.innerHTML = freeProjects.map(function(p) {
+                return '<label class="project-pick-item">' +
+                    '<input type="radio" name="connectProject" value="' + p._id + '" onchange="selectConnectProject(\'' + p._id + '\')">' +
+                    '<span class="project-pick-label">' +
+                        '<span class="project-pick-name">' + esc(p.title || p.name) + '</span>' +
+                        '<span class="project-pick-type">' + esc(p.projectType || p.type || 'project') + '</span>' +
+                    '</span>' +
+                '</label>';
+            }).join('') +
+            '<label class="project-pick-item">' +
+                '<input type="radio" name="connectProject" value="" checked onchange="selectConnectProject(null)">' +
+                '<span class="project-pick-label"><span class="project-pick-name" style="color:var(--slate)">No specific project</span></span>' +
+            '</label>' + createNewHtml;
+        }
+    } catch(e) {
+        listEl.innerHTML = '<div style="color:var(--slate);font-size:0.83rem">Could not load projects.</div>';
+    }
+}
 
 function selectConnectProject(id) {
     connectState.selectedProjectId = id || null;
@@ -1058,12 +1116,35 @@ async function refreshCardConnectBtn(archId) {
 async function refreshModalConnectBtn(archId) {
     var btn = document.getElementById('modalConnectBtn');
     if (!btn) return;
+    btn.dataset.archid = archId;
     try {
         var r = await fetch(CLIENT_API + '/connections/status/' + archId, { headers: authHeaders() });
         var d = await r.json();
         if (d.status === 'accepted') {
             btn.innerHTML = '<i class="fas fa-comments"></i> Open Chat';
             btn.onclick = function() { openChatModal(d.connectionId, btn.dataset.name || '', btn.dataset.avatar || ''); };
+            // Inject "Connect Another Project" button if not already present
+            if (!document.getElementById('modalAssignNewBtn')) {
+                var assignBtn = document.createElement('button');
+                assignBtn.id = 'modalAssignNewBtn';
+                assignBtn.className = 'connect-modal-cta';
+                assignBtn.style.cssText = 'margin-top:0.6rem;background:rgba(139,92,246,0.12);border:1.5px solid rgba(139,92,246,0.35);color:var(--violet);';
+                assignBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Connect Another Project';
+                assignBtn.onclick = function() {
+                    var cachedArchId   = btn.closest('[data-arch-id]') ? btn.closest('[data-arch-id]').dataset.archId : null;
+                    var cachedArchName = btn.dataset.name || document.getElementById('modalConnectBtn').dataset.name || '';
+                    var cachedArchSpec = '';
+                    var cachedArchAvatar = '';
+                    // Read from rendered modal header if available
+                    var av = document.getElementById('modalAvatar');
+                    if (av) cachedArchAvatar = av.src || '';
+                    var nameEl = document.querySelector('#modalBody .modal-name');
+                    // Use archId stored on the button itself
+                    var resolvedArchId = btn.dataset.archid || archId;
+                    openConnectAnotherProject(resolvedArchId, btn.dataset.name || archId, cachedArchSpec, cachedArchAvatar);
+                };
+                btn.parentNode.insertBefore(assignBtn, btn.nextSibling);
+            }
         } else if (d.status === 'pending') {
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-clock"></i> Request Pending';
@@ -1990,6 +2071,10 @@ function _archProjectStatusBadge(status, architectName) {
 
 function renderClientProjects(projects) {
     window._cachedClientProjects = projects; // cache for detail modal use
+    _updateTabBadges(projects);
+    switchProjectTab(_activeProjectTab);
+}
+function _renderClientProjectsOriginal(projects) {
     var grid = document.getElementById('clientProjectsGrid');
     if (!projects.length) {
         grid.innerHTML =
@@ -2042,6 +2127,171 @@ function renderClientProjects(projects) {
     }).join('') + '</div>';
 }
 
+/* ── Project Tabs ──────────────────────────────────────────────────────────── */
+var _activeProjectTab = 'all';
+
+function switchProjectTab(tab) {
+    _activeProjectTab = tab;
+    ['all','inprogress','completed','notconnected','history'].forEach(function(t) {
+        var btn = document.getElementById('cpTab-' + t);
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    var projects = window._cachedClientProjects || [];
+    if (tab === 'history') { renderProjectHistory(projects); }
+    else { renderFilteredProjects(projects, tab); }
+}
+
+function _updateTabBadges(projects) {
+    var counts = {
+        all:          projects.length,
+        inprogress:   projects.filter(function(p){ return p.hasAcceptedConnection && p.architectProjectStatus !== 'approved'; }).length,
+        completed:    projects.filter(function(p){ return p.hasAcceptedConnection && p.architectProjectStatus === 'approved'; }).length,
+        notconnected: projects.filter(function(p){ return !p.hasAcceptedConnection; }).length
+    };
+    Object.keys(counts).forEach(function(key) {
+        var badge = document.getElementById('cpBadge-' + key);
+        if (badge) badge.textContent = counts[key];
+    });
+}
+
+function renderFilteredProjects(projects, tab) {
+    var grid = document.getElementById('clientProjectsGrid');
+    if (!grid) return;
+    if (!projects.length) {
+        var msgs = {
+            all:          { icon: 'fa-folder-open', title: 'No projects yet',            sub: 'Create your first project brief and find the perfect architect.' },
+            inprogress:   { icon: 'fa-tools',        title: 'No active projects',         sub: 'Projects that are active or in progress will appear here.' },
+            completed:    { icon: 'fa-check-circle', title: 'No completed projects yet',  sub: 'Projects you have marked as complete will appear here.' },
+            notconnected: { icon: 'fa-user-slash',   title: 'All projects are connected', sub: 'Projects without an assigned architect will appear here.' }
+        };
+        var m = msgs[tab] || msgs.all;
+        grid.innerHTML = '<div class="cp-tab-empty">' +
+            '<div><i class="fas ' + m.icon + '"></i></div>' +
+            '<div class="cp-tab-empty-title">' + m.title + '</div>' +
+            '<div class="cp-tab-empty-sub">' + m.sub + '</div>' +
+            (tab === 'all' || tab === 'notconnected'
+                ? '<br><button class="btn-primary" onclick="openCreateProject()" style="padding:0.7rem 1.5rem;border-radius:10px;font-weight:700;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:0.5rem"><i class="fas fa-plus"></i> Create Project</button>'
+                : '') +
+        '</div>';
+        return;
+    }
+   var filtered = tab === 'all'          ? projects
+                 : tab === 'inprogress'   ? projects.filter(function(p){
+                       return p.hasAcceptedConnection && p.architectProjectStatus !== 'approved';
+                   })
+                 : tab === 'completed'    ? projects.filter(function(p){
+                       return p.hasAcceptedConnection && p.architectProjectStatus === 'approved';
+                   })
+                 : tab === 'notconnected' ? projects.filter(function(p){ return !p.hasAcceptedConnection; })
+                 : projects;
+    grid.innerHTML = '<div class="cp-grid">' + filtered.map(function(p) {
+        var iconCls = PROJECT_TYPE_ICONS[p.projectType] || 'fa-project-diagram';
+        var sc      = STATUS_CONFIG[p.status] || { label: p.status, cls: 'status-draft' };
+        var bStr = '';
+        if (p.budget && (p.budget.min || p.budget.max)) {
+            var fmt = function(n) { return n >= 100000 ? '₹' + (n/100000).toFixed(1) + 'L' : '₹' + n.toLocaleString('en-IN'); };
+            bStr = (p.budget.min ? fmt(p.budget.min) : '') + (p.budget.min && p.budget.max ? ' – ' : '') + (p.budget.max ? fmt(p.budget.max) : '');
+        }
+        var lStr = (p.landSize && p.landSize.value) ? p.landSize.value + ' ' + p.landSize.unit : '';
+        var attCount = (p.attachments || []).length;
+        var date = new Date(p.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+        return '<div class="cp-card">' +
+            '<div class="cp-card-top">' +
+                '<div class="cp-type-icon"><i class="fas ' + iconCls + '"></i></div>' +
+                '<div class="cp-card-info">' +
+                    '<div class="cp-title">' + esc(p.title) + '</div>' +
+                    '<div class="cp-type-tag">' + esc(p.projectType) + '</div>' +
+                '</div>' +
+                '<span class="cp-status ' + sc.cls + '">' + sc.label + '</span>' +
+            '</div>' +
+            '<div class="cp-meta-row">' +
+                (bStr ? '<div class="cp-meta-item"><i class="fas fa-rupee-sign"></i>' + esc(bStr) + '</div>' : '') +
+                (lStr ? '<div class="cp-meta-item"><i class="fas fa-expand-arrows-alt"></i>' + esc(lStr) + '</div>' : '') +
+                (p.style ? '<div class="cp-meta-item"><i class="fas fa-paint-brush"></i>' + esc(p.style) + '</div>' : '') +
+                (attCount ? '<div class="cp-meta-item"><i class="fas fa-paperclip"></i>' + attCount + ' file' + (attCount > 1 ? 's' : '') + '</div>' : '') +
+            '</div>' +
+            (p.description ? '<div class="cp-desc">' + esc(p.description) + '</div>' : '') +
+            '<div class="cp-date">Created ' + date + '</div>' +
+           (p.hasAcceptedConnection && p.architectProjectStatus === 'approved' && p.updatedAt
+                ? '<div class="cp-completed-date"><i class="fas fa-check-circle"></i> Completed ' + new Date(p.updatedAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) + '</div>'
+                : '') +
+            (p.hasAcceptedConnection && p.architectName
+                ? '<div class="cp-architect-name"><i class="fas fa-user-tie"></i> ' + esc(p.architectName) + '</div>'
+                : '') +
+            '<div class="cp-actions">' +
+                '<button class="cp-btn cp-btn-view"   onclick="viewClientProject(\'' + p._id + '\')"><i class="fas fa-eye"></i> View</button>' +
+                (p.hasAcceptedConnection && p.architectProjectStatus === 'approved'
+                    ? ''
+                    : '<button class="cp-btn cp-btn-edit"   onclick="editClientProject(\'' + p._id + '\')"><i class="fas fa-edit"></i> Edit</button>') +
+                (p.hasAcceptedConnection
+                    ? _archProjectStatusBadge(p.architectProjectStatus, p.architectName)
+                    : '<button class="cp-btn cp-btn-connect" onclick="connectFromProject(\'' + p._id + '\',\'' + esc(p.title) + '\')"><i class="fas fa-user-plus"></i> Find Architect</button>') +
+                '<button class="cp-btn cp-btn-delete" onclick="deleteClientProject(\'' + p._id + '\')"><i class="fas fa-trash"></i></button>' +
+            '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+}
+
+function renderProjectHistory(projects) {
+    var grid = document.getElementById('clientProjectsGrid');
+    if (!grid) return;
+    if (!projects.length) {
+        grid.innerHTML = '<div class="cp-tab-empty">' +
+            '<div><i class="fas fa-history"></i></div>' +
+            '<div class="cp-tab-empty-title">No project history</div>' +
+            '<div class="cp-tab-empty-sub">Your project activity will appear here once you create projects.</div>' +
+        '</div>';
+        return;
+    }
+    var sorted = projects.slice().sort(function(a, b) {
+        return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+    });
+    var statusIcons = {
+        active:      { icon: 'fa-play-circle',  color: '#10b981' },
+        draft:       { icon: 'fa-pencil-alt',   color: '#94a3b8' },
+        in_progress: { icon: 'fa-tools',        color: '#3b82f6' },
+        completed:   { icon: 'fa-check-circle', color: '#8b5cf6' },
+        cancelled:   { icon: 'fa-times-circle', color: '#f43f5e' }
+    };
+    grid.innerHTML = '<div class="cp-history-list">' +
+        sorted.map(function(p) {
+            var sc          = STATUS_CONFIG[p.status] || { label: p.status, cls: 'status-draft' };
+            var si          = statusIcons[p.status]   || { icon: 'fa-circle', color: '#94a3b8' };
+            var iconCls     = PROJECT_TYPE_ICONS[p.projectType] || 'fa-project-diagram';
+            var createdDate = new Date(p.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+            var updatedDate = new Date(p.updatedAt || p.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+            var bStr = '';
+            if (p.budget && (p.budget.min || p.budget.max)) {
+                var fmt = function(n) { return n >= 100000 ? '₹' + (n/100000).toFixed(1) + 'L' : '₹' + n.toLocaleString('en-IN'); };
+                bStr = (p.budget.min ? fmt(p.budget.min) : '') + (p.budget.min && p.budget.max ? ' – ' : '') + (p.budget.max ? fmt(p.budget.max) : '');
+            }
+            return '<div class="cp-history-item">' +
+                '<div class="cp-history-icon" style="color:' + si.color + ';border-color:' + si.color + '33;background:' + si.color + '15;">' +
+                    '<i class="fas ' + iconCls + '"></i>' +
+                '</div>' +
+                '<div class="cp-history-body">' +
+                    '<div class="cp-history-title">' + esc(p.title) + '</div>' +
+                    '<div class="cp-history-meta">' +
+                        '<span class="cp-status ' + sc.cls + '" style="font-size:0.62rem">' + sc.label + '</span>' +
+                        '<span style="text-transform:capitalize;font-size:0.73rem">' + esc(p.projectType) + '</span>' +
+                        (bStr ? '<span style="font-size:0.73rem">' + esc(bStr) + '</span>' : '') +
+                         (p.hasAcceptedConnection
+                            ? '<span style="color:#10b981;font-size:0.73rem"><i class="fas fa-user-tie"></i> ' + esc(p.architectName || 'Architect assigned') + '</span>'
+                            : '<span style="color:#94a3b8;font-size:0.73rem"><i class="fas fa-user-slash"></i> No architect</span>') +
+                        (p.hasAcceptedConnection && p.architectProjectStatus === 'approved' && p.updatedAt
+                            ? '<span style="color:#8b5cf6;font-size:0.73rem"><i class="fas fa-check-circle"></i> Completed ' + new Date(p.updatedAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) + '</span>'
+                            : '') +
+                        '<span class="cp-history-date">Created ' + createdDate + (updatedDate !== createdDate ? ' · Updated ' + updatedDate : '') + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div style="display:flex;gap:0.4rem;flex-shrink:0;align-items:flex-start">' +
+                    '<button class="cp-btn cp-btn-view" onclick="viewClientProject(\'' + p._id + '\')" style="font-size:0.7rem;padding:4px 9px"><i class="fas fa-eye"></i></button>' +
+                    // '<button class="cp-btn cp-btn-edit" onclick="editClientProject(\'' + p._id + '\')" style="font-size:0.7rem;padding:4px 9px"><i class="fas fa-edit"></i></button>' +
+                '</div>' +
+            '</div>';
+        }).join('') +
+    '</div>';
+}
 /* ── Project actions ─────────────────────────────────────────────────────── */
 async function viewClientProject(id) {
     document.getElementById('pdBody').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--slate)"><i class="fas fa-spinner fa-spin"></i></div>';
