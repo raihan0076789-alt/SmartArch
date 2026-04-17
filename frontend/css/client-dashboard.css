@@ -3534,3 +3534,155 @@ text-overflow: ellipsis;
 .conn-history-status.hs-completed { background: rgba(99,102,241,0.12);  color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
 .conn-history-status.hs-rejected  { background: rgba(244,63,94,0.10);   color: var(--rose);    border: 1px solid rgba(244,63,94,0.25); }
 .conn-history-status.hs-pending   { background: rgba(245,158,11,0.12); color: var(--amber);   border: 1px solid rgba(245,158,11,0.3); }
+/* ── Shared Projects Tabs ─────────────────────────────────────────────────── */
+.sp-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 0;
+}
+.sp-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    position: relative;
+    bottom: -1px;
+}
+.sp-tab:hover { color: #94a3b8; }
+.sp-tab.active {
+    color: #00d4c8;
+    border-bottom-color: #00d4c8;
+    background: rgba(0,212,200,0.06);
+}
+.sp-tab-badge {
+    background: #1e293b;
+    color: #94a3b8;
+    border-radius: 20px;
+    padding: 1px 7px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+}
+.sp-tab.active .sp-tab-badge {
+    background: rgba(0,212,200,0.15);
+    color: #00d4c8;
+}
+
+/* ── Completed Card Overrides ─────────────────────────────────────────────── */
+.shared-card-completed { border-color: rgba(16,185,129,0.2); }
+.shared-card-completed .shared-card-top { background: linear-gradient(90deg,#10b981,#059669); }
+.shared-completed-banner {
+    font-size: 0.72rem;
+    color: #10b981;
+    background: rgba(16,185,129,0.08);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 6px;
+    padding: 5px 10px;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.shared-chat-disabled {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #475569;
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.82rem;
+    cursor: not-allowed;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+/* ── Architect History Panel ──────────────────────────────────────────────── */
+.sp-history-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 1.25rem;
+}
+.sp-history-sub {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #64748b;
+    margin-left: 0.25rem;
+}
+.sp-hist-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    transition: box-shadow 0.18s;
+}
+.sp-hist-card:hover { box-shadow: 0 4px 20px rgba(0,212,200,0.08); }
+.sp-hist-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+}
+.sp-hist-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(0,212,200,0.3);
+    flex-shrink: 0;
+}
+.sp-hist-info { flex: 1; }
+.sp-hist-name { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.2rem; }
+.sp-hist-spec { font-size: 0.78rem; color: #94a3b8; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
+.sp-hist-rating {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 20px; padding: 1px 7px; font-size: 0.68rem; color: #f59e0b; font-weight: 700;
+}
+.sp-hist-count { font-size: 0.72rem; color: #64748b; display: flex; align-items: center; gap: 0.3rem; }
+.sp-hist-proj-list {
+    border-top: 1px solid #1e293b;
+    padding-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.sp-hist-proj-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid rgba(30,41,59,0.6);
+}
+.sp-hist-proj-item:last-child { border-bottom: none; }
+.sp-hist-proj-detail { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
+.sp-hist-proj-name { font-weight: 600; color: #cbd5e1; font-size: 0.8rem; }
+.sp-hist-proj-dates {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.7rem;
+    color: #64748b;
+    flex-wrap: wrap;
+}
+.sp-hist-proj-dates span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}

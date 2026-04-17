@@ -3124,6 +3124,30 @@ async function loadSharedProjects() {
     }
 }
 
+/* ── Shared Projects Tab State ───────────────────────────────────────────── */
+var _activeSharedTab = 'inprogress';
+
+function switchSharedTab(tab) {
+    _activeSharedTab = tab;
+    // Update tab button active state
+    ['inprogress','completed','history'].forEach(function(t) {
+        var btn = document.getElementById('spTab-' + t);
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    // Show/hide grid vs history panel
+    var grid = document.getElementById('sharedProjectsGrid');
+    var histPanel = document.getElementById('sharedHistoryPanel');
+    if (tab === 'history') {
+        if (grid) grid.style.display = 'none';
+        if (histPanel) histPanel.style.display = '';
+        renderSharedHistory(window._cachedSharedProjects || []);
+    } else {
+        if (grid) grid.style.display = '';
+        if (histPanel) histPanel.style.display = 'none';
+        renderSharedProjects(window._cachedSharedProjects || []);
+    }
+}
+
 function renderSharedProjects(shares) {
     var grid  = document.getElementById('sharedProjectsGrid');
     window._cachedSharedProjects = shares; // cache for global search
@@ -3138,15 +3162,45 @@ function renderSharedProjects(shares) {
         badge.style.display = 'none';
     }
 
-    if (!shares.length) {
+    // Partition by status
+    var inProgressStatuses = ['draft','in_progress','review'];
+    var completedStatuses  = ['approved'];
+
+    var inProgressShares = shares.filter(function(s){
+        return inProgressStatuses.indexOf((s.project || {}).status) !== -1;
+    });
+    var completedShares = shares.filter(function(s){
+        return completedStatuses.indexOf((s.project || {}).status) !== -1;
+    });
+
+    // Update tab badges
+    var setBadge = function(id, count) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = count;
+    };
+    setBadge('spBadge-inprogress', inProgressShares.length);
+    setBadge('spBadge-completed',  completedShares.length);
+    setBadge('spBadge-history',    completedShares.length); // history = completed architects
+
+    // If history tab active, don't touch the grid
+    if (_activeSharedTab === 'history') return;
+
+    // Filter by active tab
+    var filtered = _activeSharedTab === 'completed' ? completedShares : inProgressShares;
+
+    if (!filtered.length) {
+        var emptyMsg = _activeSharedTab === 'completed'
+            ? 'No completed projects yet.'
+            : 'No in-progress projects at the moment.';
         grid.innerHTML =
             '<div class="shared-empty">' +
-                '<div class="shared-empty-icon"><i class="fas fa-share-alt"></i></div>' +
-                '<div style="font-size:1rem;font-weight:600;color:#f1f5f9;margin-bottom:0.5rem;">No shared projects yet</div>' +
-                '<div style="font-size:0.85rem;color:#64748b;">When an architect shares a completed project with you, it will appear here.</div>' +
+                '<div class="shared-empty-icon"><i class="fas fa-' + (_activeSharedTab === 'completed' ? 'check-circle' : 'spinner') + '"></i></div>' +
+                '<div style="font-size:1rem;font-weight:600;color:#f1f5f9;margin-bottom:0.5rem;">' + emptyMsg + '</div>' +
             '</div>';
         return;
     }
+
+    var isCompletedTab = _activeSharedTab === 'completed';
 
     var viewModes = [
         { icon: 'fa-th-large',      label: '2D Plan'    },
@@ -3156,7 +3210,7 @@ function renderSharedProjects(shares) {
         { icon: 'fa-home',          label: 'Dollhouse'  }
     ];
 
-    grid.innerHTML = '<div class="shared-grid">' + shares.map(function(share) {
+    grid.innerHTML = '<div class="shared-grid">' + filtered.map(function(share) {
         var proj  = share.project || {};
         var arch  = share.sharedBy || {};
         var isNew = !share.viewedAt;
@@ -3180,7 +3234,6 @@ function renderSharedProjects(shares) {
 
         var newBadge = isNew ? '<span class="shared-new-badge">New</span>' : '';
 
-        // Rating pill — shows architect's current average rating
         var archRating = arch.rating ? parseFloat(arch.rating).toFixed(1) : null;
         var ratingPill = archRating && parseFloat(archRating) > 0
             ? '<span style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:2px 8px;font-size:0.7rem;color:#f59e0b;font-weight:600;"><i class="fas fa-star" style="font-size:0.6rem"></i>' + archRating + '</span>'
@@ -3190,7 +3243,25 @@ function renderSharedProjects(shares) {
             ? new Date(share.createdAt).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' })
             : '';
 
-        return '<div class="shared-card" onclick="openSharedProject(\'' + share.shareToken + '\')">' +
+        // Footer: disable chat/connect for completed tab
+        var footerBtn;
+        if (isCompletedTab) {
+            footerBtn =
+                '<button class="shared-view-btn" onclick="event.stopPropagation();openSharedProject(\'' + share.shareToken + '\')">' +
+                    '<i class="fas fa-eye"></i> Open Project Viewer' +
+                '</button>' +
+                '<button class="shared-chat-disabled" title="Chat is disabled for completed projects" disabled>' +
+                    '<i class="fas fa-comment-slash"></i>' +
+                '</button>';
+        } else {
+            footerBtn =
+                '<button class="shared-view-btn" onclick="event.stopPropagation();openSharedProject(\'' + share.shareToken + '\')">' +
+                    '<i class="fas fa-eye"></i> Open Project Viewer' +
+                '</button>' +
+                clientProjectStatusHtml(proj, share);
+        }
+
+        return '<div class="shared-card' + (isCompletedTab ? ' shared-card-completed' : '') + '" onclick="openSharedProject(\'' + share.shareToken + '\')">' +
             '<div class="shared-card-top"></div>' +
             '<div class="shared-card-body">' +
                 '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">' +
@@ -3210,17 +3281,82 @@ function renderSharedProjects(shares) {
                 '<div class="shared-card-meta">' + metaHtml + '</div>' +
                 viewModesHtml +
                 msgHtml +
-                '<div class="shared-card-footer">' +
-                    '<button class="shared-view-btn" onclick="event.stopPropagation();openSharedProject(\'' + share.shareToken + '\')">' +
-                        '<i class="fas fa-eye"></i> Open Project Viewer' +
-                    '</button>' +
-                    clientProjectStatusHtml(proj, share) +
-                '</div>' +
+                (isCompletedTab ? '<div class="shared-completed-banner"><i class="fas fa-check-circle"></i> Project Completed — Chat Disabled</div>' : '') +
+                '<div class="shared-card-footer">' + footerBtn + '</div>' +
             '</div>' +
         '</div>';
     }).join('') + '</div>';
 }
 
+function renderSharedHistory(shares) {
+    var listEl = document.getElementById('sharedHistoryList');
+    if (!listEl) return;
+
+    // Collect unique completed architects
+    var completedStatuses = ['approved'];
+    var completedShares = shares.filter(function(s){
+        return completedStatuses.indexOf((s.project || {}).status) !== -1;
+    });
+
+    if (!completedShares.length) {
+        listEl.innerHTML = '<div class="shared-empty"><div class="shared-empty-icon"><i class="fas fa-history"></i></div>' +
+            '<div style="font-size:1rem;font-weight:600;color:#f1f5f9;margin-bottom:0.5rem;">No history yet</div>' +
+            '<div style="font-size:0.85rem;color:#64748b;">Completed projects and their architects will appear here.</div></div>';
+        return;
+    }
+
+    // Group by architect
+    var archMap = {};
+    completedShares.forEach(function(share) {
+        var arch = share.sharedBy || {};
+        var archId = arch._id || arch.id || arch.name || 'unknown';
+        if (!archMap[archId]) {
+            archMap[archId] = { arch: arch, projects: [] };
+        }
+        archMap[archId].projects.push(share.project || {});
+    });
+
+    listEl.innerHTML = Object.values(archMap).map(function(entry) {
+        var arch = entry.arch;
+        var projects = entry.projects;
+        var avatar = arch.avatar ||
+            'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name || 'A') + '&background=7c3aed&color=fff&bold=true&size=60';
+        var archRating = arch.rating ? parseFloat(arch.rating).toFixed(1) : null;
+        var ratingHtml = archRating && parseFloat(archRating) > 0
+            ? '<span class="sp-hist-rating"><i class="fas fa-star"></i>' + archRating + '</span>' : '';
+
+        var projListHtml = projects.map(function(p) {
+            var startedStr  = p.createdAt
+                ? new Date(p.createdAt).toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'})
+                : '—';
+            var completedStr = p.updatedAt
+                ? new Date(p.updatedAt).toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'})
+                : '—';
+            return '<div class="sp-hist-proj-item">' +
+                '<i class="fas fa-folder-open" style="color:var(--cyan);font-size:0.7rem"></i>' +
+                '<div class="sp-hist-proj-detail">' +
+                    '<span class="sp-hist-proj-name">' + esc(p.name || 'Untitled Project') + '</span>' +
+                    '<div class="sp-hist-proj-dates">' +
+                        '<span><i class="fas fa-play-circle" style="color:#7c3aed;font-size:0.6rem"></i> Started: ' + startedStr + '</span>' +
+                        '<span><i class="fas fa-check-circle" style="color:#10b981;font-size:0.6rem"></i> Completed: ' + completedStr + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+
+        return '<div class="sp-hist-card">' +
+            '<div class="sp-hist-top">' +
+                '<img class="sp-hist-avatar" src="' + avatar + '" alt="' + esc(arch.name||'') + '" onerror="this.src=\'https://ui-avatars.com/api/?name=A&background=7c3aed&color=fff&bold=true\'">' +
+                '<div class="sp-hist-info">' +
+                    '<div class="sp-hist-name">' + esc(arch.name || 'Architect') + '</div>' +
+                    '<div class="sp-hist-spec">' + esc(arch.specialization || 'Architect') + ' ' + ratingHtml + '</div>' +
+                    '<div class="sp-hist-count"><i class="fas fa-check-circle" style="color:#10b981;font-size:0.65rem"></i> ' + projects.length + ' project' + (projects.length > 1 ? 's' : '') + ' completed</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="sp-hist-proj-list">' + projListHtml + '</div>' +
+        '</div>';
+    }).join('');
+}
 function openSharedProject(token) {
     var backUrl = encodeURIComponent('client-dashboard.html#shared');
     window.open('project-viewer.html?token=' + token + '&back=' + backUrl, '_blank');

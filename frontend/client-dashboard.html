@@ -866,11 +866,35 @@
         <p>Projects your architects have shared for your review</p>
     </div>
     <div class="proj-body">
+        <!-- TAB BAR -->
+        <div class="sp-tabs">
+            <button class="sp-tab active" id="spTab-inprogress" onclick="switchSharedTab('inprogress')">
+                <i class="fas fa-spinner"></i> In Progress
+                <span class="sp-tab-badge" id="spBadge-inprogress">0</span>
+            </button>
+            <button class="sp-tab" id="spTab-completed" onclick="switchSharedTab('completed')">
+                <i class="fas fa-check-circle"></i> Completed
+                <span class="sp-tab-badge" id="spBadge-completed">0</span>
+            </button>
+            <button class="sp-tab" id="spTab-history" onclick="switchSharedTab('history')">
+                <i class="fas fa-history"></i> History
+                <span class="sp-tab-badge" id="spBadge-history">0</span>
+            </button>
+        </div>
+        <!-- PROJECT GRID (filtered by active tab) -->
         <div id="sharedProjectsGrid">
             <div style="text-align:center;padding:3rem;color:var(--slate)">
                 <i class="fas fa-spinner fa-spin" style="font-size:1.5rem"></i>
                 <div style="margin-top:1rem">Loading shared projects…</div>
             </div>
+        </div>
+        <!-- HISTORY PANEL -->
+        <div id="sharedHistoryPanel" style="display:none">
+            <div class="sp-history-header">
+                <i class="fas fa-history"></i> Architect History
+                <span class="sp-history-sub">All architects you've worked with on completed projects</span>
+            </div>
+            <div id="sharedHistoryList"></div>
         </div>
     </div>
 </div>
