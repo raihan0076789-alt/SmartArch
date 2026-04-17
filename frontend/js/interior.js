@@ -579,6 +579,7 @@
             bathroom:  furnishBathroom,
             office:    furnishOffice,
             staircase: furnishStaircase,
+            garage:    furnishGarage,
         }[room.type];
 
         if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
@@ -899,6 +900,140 @@
         cyl(0.13, 0.04, 0.22, 8, 0x2d7a1b, cx + rw * 0.22, fl + 0.97, cz + rd * 0.12, 'furniture');
     }
 
+    function furnishGarage(cx, cz, fl, rw, rd) {
+        const wallThick = 0.15;
+
+        // ── Concrete floor overlay ─────────────────────────────────────
+        box(rw - 0.1, 0.01, rd - 0.1, 0x606060, cx, fl + 0.005, cz, 0.95, 'furniture');
+
+        // ── Garage Door — protruding OUTSIDE the wall ──────────────────
+        // Pushed outward by wallThick so panels sit on the exterior face
+        const gdW  = Math.min(rw * 0.72, 3.6);
+        const gdH  = Math.min(2.2, WALL_H * 0.78);
+        const panelCount = 4;
+        const panelH = gdH / panelCount;
+        const doorZ  = cz - rd / 2+0.03; // centered ON the wall — visible from both interior and exterior
+
+        for (let i = 0; i < panelCount; i++) {
+            const py = fl + panelH * 0.5 + panelH * i;
+            // Panel body (0.10 thick — clearly visible from outside)
+            box(gdW, panelH - 0.03, 0.20, 0xd0cfc8, cx, py, doorZ - 0.05, 0.4, 'furniture');
+            // Horizontal rail crease
+            box(gdW - 0.05, 0.03, 0.11, 0xb0afaa, cx, py + panelH / 2 - 0.015, doorZ - 0.055, 0.3, 'furniture');
+            // Vertical stile lines
+            [-1, 0, 1].forEach(k => {
+                const sx = cx + k * (gdW * 0.32);
+                if (Math.abs(k * gdW * 0.32) < gdW * 0.48)
+                    box(0.04, panelH - 0.05, 0.115, 0xb8b7b0, sx, py, doorZ - 0.06, 0.35, 'furniture');
+            });
+        }
+        // Handle bar on bottom panel
+        box(gdW * 0.22, 0.05, 0.06, 0x888880, cx, fl + panelH * 0.5, doorZ - 0.1, 0.2, 'furniture');
+        // Door frame — left, right, header
+        box(0.10, gdH + 0.08, 0.18, 0x505050, cx - gdW / 2 - 0.05, fl + gdH / 2, doorZ - 0.05, 0.6, 'furniture');
+        box(0.10, gdH + 0.08, 0.18, 0x505050, cx + gdW / 2 + 0.05, fl + gdH / 2, doorZ - 0.05, 0.6, 'furniture');
+        box(gdW + 0.22, 0.10, 0.18, 0x505050, cx, fl + gdH + 0.03, doorZ - 0.05, 0.6, 'furniture');
+
+        // ── Door opener motor (ceiling, interior side) ─────────────────
+        box(0.32, 0.22, 0.9,    0x444444, cx, WALL_H - 0.13, cz - rd * 0.22, 0.5, 'furniture');
+        box(0.08, 0.08, rd * 0.5, 0x666666, cx, WALL_H - 0.07, cz - rd * 0.05, 0.4, 'furniture');
+
+        // ── Car ───────────────────────────────────────────────────────
+        if (rw >= 4.0 && rd >= 4.5) {
+            const carX = cx;
+            const carZ = cz + rd * 0.06;
+            // Body
+            box(1.82, 0.50, 4.0,  0x2a4a7f, carX, fl + 0.38, carZ, 0.3, 'furniture');
+            // Cabin roof
+            box(1.52, 0.38, 1.95, 0x2a4a7f, carX, fl + 0.88, carZ - 0.28, 0.35, 'furniture');
+            // Windshield
+            box(1.48, 0.34, 0.06, 0x111a2e, carX, fl + 0.88, carZ - 1.25, 0.05, 'furniture');
+            // Rear window
+            box(1.48, 0.28, 0.06, 0x111a2e, carX, fl + 0.85, carZ + 0.70, 0.05, 'furniture');
+            // Bumpers
+            box(1.72, 0.20, 0.12, 0x222222, carX, fl + 0.22, carZ - 2.07, 0.4, 'furniture');
+            box(1.72, 0.20, 0.12, 0x222222, carX, fl + 0.22, carZ + 2.07, 0.4, 'furniture');
+            // Headlights & tail lights
+            [-0.72, 0.72].forEach(dx => {
+                box(0.30, 0.13, 0.06, 0xfffde0, carX + dx, fl + 0.42, carZ - 2.04, 0.05, 'furniture');
+                box(0.30, 0.13, 0.06, 0xcc2200, carX + dx, fl + 0.42, carZ + 2.04, 0.15, 'furniture');
+            });
+            // Wheels
+            [[-0.96, -1.32],[0.96, -1.32],[-0.96, 1.32],[0.96, 1.32]].forEach(([wx, wz]) => {
+                cyl(0.30, 0.30, 0.20, 16, 0x111111, carX + wx, fl + 0.30, carZ + wz, 'furniture');
+                cyl(0.17, 0.17, 0.22, 10, 0x888888, carX + wx, fl + 0.30, carZ + wz, 'furniture');
+            });
+            // Side mirrors
+            [-0.92, 0.92].forEach(dx =>
+                box(0.12, 0.08, 0.18, 0x1a3a6a, carX + dx, fl + 0.78, carZ - 0.90, 0.3, 'furniture'));
+        }
+
+        // ── Wall shelving (RIGHT wall — safely inset) ──────────────────
+        // Anchor at cx + rw/2 - 0.22 so nothing crosses the right wall
+        const shelfAnchorX = cx + rw / 2 - 0.22;
+        const shelfH = Math.min(WALL_H - 0.3, 2.1);
+        const shelfD = Math.min(rd * 0.32, 1.3);
+        // Back panel flush against right wall
+        box(0.06, shelfH, shelfD, 0x5c3d1e, shelfAnchorX, fl + shelfH / 2, cz - rd * 0.06, 0.8, 'furniture');
+        // Shelf boards
+        [0.38, 0.82, 1.28, 1.72].forEach(sy => {
+            if (sy < shelfH - 0.1)
+                box(0.40, 0.04, shelfD - 0.04, 0x7a5535, shelfAnchorX - 0.17, fl + sy, cz - rd * 0.06, 0.6, 'furniture');
+        });
+        // Paint cans
+        [-0.18, 0, 0.18].forEach((dz, i) =>
+            cyl(0.07, 0.065, 0.18, 10, [0xcc4422, 0x336699, 0x449933][i],
+                shelfAnchorX - 0.17, fl + 0.47, cz - rd * 0.06 + dz * (shelfD * 0.55), 'furniture'));
+        // Toolbox
+        box(0.36, 0.14, 0.20, 0xcc3300, shelfAnchorX - 0.17, fl + 1.43, cz - rd * 0.06, 0.5, 'furniture');
+
+        // ── Workbench (LEFT wall — fully inset, no leg overflow) ───────
+        // All parts anchored from cx - rw/2 + offset, never exceed left wall
+        const wbDepth = 0.60;
+        const wbLen   = Math.min(rw * 0.36, 1.5);
+        // Place bench top so its LEFT edge = left wall + 0.06 clearance
+        const wbCenterX = cx - rw / 2 + 0.06 + wbLen / 2;
+        const wbCenterZ = cz + rd * 0.28;
+        // Bench top
+        box(wbLen, 0.05, wbDepth, 0x6b4520, wbCenterX, fl + 0.88, wbCenterZ, 0.55, 'furniture');
+        // Legs — offsets are fractions of wbLen/2 and wbDepth/2, always inside bench top
+        [[-1, -1],[-1, 1],[1, -1],[1, 1]].forEach(([sx, sz]) =>
+            box(0.06, 0.88, 0.06, 0x4a3010,
+                wbCenterX + sx * (wbLen / 2 - 0.06),
+                fl + 0.44,
+                wbCenterZ + sz * (wbDepth / 2 - 0.06),
+                0.7, 'furniture'));
+        // Pegboard above bench
+        box(wbLen, 0.95, 0.04, 0xd4b896, wbCenterX, fl + 1.42, wbCenterZ - wbDepth / 2 + 0.02, 0.6, 'furniture');
+        // Tools on pegboard
+        box(0.04, 0.28, 0.05, 0x333333, wbCenterX - wbLen * 0.25, fl + 1.48, wbCenterZ - wbDepth / 2 + 0.01, 0.3, 'furniture');
+        box(0.17, 0.04, 0.05, 0x888800, wbCenterX + wbLen * 0.1,  fl + 1.52, wbCenterZ - wbDepth / 2 + 0.01, 0.3, 'furniture');
+        // Vise
+        box(0.22, 0.14, 0.18, 0x555555, wbCenterX + wbLen * 0.32, fl + 0.97, wbCenterZ, 0.3, 'furniture');
+        // Small storage box on bench
+        box(0.22, 0.18, 0.26, 0x8b6b3d, wbCenterX - wbLen * 0.25, fl + 0.99, wbCenterZ, 0.6, 'furniture');
+
+        // ── Fluorescent strip lights ───────────────────────────────────
+        [cz - rd * 0.26, cz + rd * 0.12].forEach(lz => {
+            box(0.12, 0.06, 1.2, 0xfffffaFF, cx, WALL_H - 0.03, lz, 0.05, 'furniture');
+            box(0.10, 0.03, 1.18, 0xfffff0,   cx, WALL_H - 0.07, lz, 0.02, 'furniture');
+        });
+
+        // ── Floor oil stain ────────────────────────────────────────────
+        box(0.7, 0.003, 0.5, 0x3a3a3a, cx - rw * 0.04, fl + 0.008, cz + rd * 0.1, 0.98, 'furniture');
+
+        // ── Bins (front-left corner, well inside) ─────────────────────
+        const binX = cx - rw / 2 + 0.30;
+        const binZ = cz - rd / 2 + 0.35;
+        cyl(0.18, 0.15, 0.55, 10, 0x226622, binX,        fl + 0.275, binZ, 'furniture');
+        cyl(0.19, 0.19, 0.03, 10, 0x1a4a1a, binX,        fl + 0.565, binZ, 'furniture');
+        cyl(0.18, 0.15, 0.55, 10, 0x1a44aa, binX + 0.45, fl + 0.275, binZ, 'furniture');
+        cyl(0.19, 0.19, 0.03, 10, 0x112288, binX + 0.45, fl + 0.565, binZ, 'furniture');
+
+        // ── Fire extinguisher (right-rear corner) ─────────────────────
+        cyl(0.055, 0.05, 0.48, 10, 0xcc1100, cx + rw / 2 - 0.18, fl + 0.84, cz + rd / 2 - 0.18, 'furniture');
+        cyl(0.030, 0.03, 0.08,  8, 0x888888, cx + rw / 2 - 0.18, fl + 1.10, cz + rd / 2 - 0.18, 'furniture');
+    }
     function furnishDefault(cx, cz, fl, rw, rd) {
         // Generic: a table and two chairs
         box(Math.min(rw * 0.4, 1.2), 0.05, Math.min(rd * 0.35, 0.7), 0x7a5535, cx, fl + 0.74, cz, 0.6, 'furniture');
