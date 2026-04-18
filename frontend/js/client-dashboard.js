@@ -999,8 +999,15 @@ async function openConnectModal(archId, archName, archSpec, archAvatar) {
     }
 }
 async function openConnectAnotherProject(archId, archName, archSpec, archAvatar) {
-    // Close the architect profile modal first
     closeModalDirect();
+
+    // We already have an accepted connection — fetch its connectionId
+    var connectionId = null;
+    try {
+        var sr = await fetch(CLIENT_API + '/connections/status/' + archId, { headers: authHeaders() });
+        var sd = await sr.json();
+        connectionId = sd.connectionId || null;
+    } catch(e) {}
 
     connectState.architectId   = archId;
     connectState.architectName = archName;
@@ -1009,9 +1016,10 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
     var fallback = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(archName) + '&background=8b5cf6&color=fff&bold=true';
     document.getElementById('connectArchAvatar').src = archAvatar || fallback;
     document.getElementById('connectArchAvatar').onerror = function() { this.src = fallback; };
-    document.getElementById('connectArchName').textContent = archName;
-    document.getElementById('connectArchSpec').textContent = archSpec || 'Architect';
+    document.getElementById('connectArchName').textContent  = archName;
+    document.getElementById('connectArchSpec').textContent  = archSpec || 'Architect';
     document.getElementById('connectIntroMsg').value = '';
+    document.getElementById('connectIntroMsg').placeholder = 'Describe the new project you want to work on...';
 
     var listEl = document.getElementById('connectProjectList');
     listEl.innerHTML = '<div style="color:var(--slate);font-size:0.85rem"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
@@ -1019,12 +1027,11 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
     document.getElementById('connectBackdrop').classList.add('open');
     document.body.style.overflow = 'hidden';
 
+    // Load only unconnected projects
     try {
-        var pr = await fetch(CLIENT_API + '/client/projects', { headers: authHeaders() });
-        var pd = await pr.json();
-        // Only show projects NOT already connected to this architect
-        var allProjects  = pd.data || [];
-        var freeProjects = allProjects.filter(function(p) { return !p.hasAcceptedConnection; });
+        var pr  = await fetch(CLIENT_API + '/client/projects', { headers: authHeaders() });
+        var pd  = await pr.json();
+        var freeProjects = (pd.data || []).filter(function(p) { return !p.hasAcceptedConnection; });
 
         var createNewHtml = '<div style="margin-top:0.5rem">' +
             '<button onclick="closeConnectModal();openCreateProject()" ' +
@@ -1035,7 +1042,7 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
             listEl.innerHTML =
                 '<div style="color:var(--slate);font-size:0.83rem;padding:0.5rem 0;line-height:1.6">' +
                 '<i class="fas fa-info-circle" style="color:var(--violet);margin-right:0.4rem"></i>' +
-                'All your projects already have an architect connected. Create a new project brief to assign to ' + esc(archName) + '.' +
+                'All your projects already have an architect. Create a new project brief to share with ' + esc(archName) + '.' +
                 '</div>' + createNewHtml;
         } else {
             listEl.innerHTML = freeProjects.map(function(p) {
@@ -1054,6 +1061,51 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
         }
     } catch(e) {
         listEl.innerHTML = '<div style="color:var(--slate);font-size:0.83rem">Could not load projects.</div>';
+    }
+
+    // Override the send button to post a chat message instead of a new connection request
+    var sendBtn = document.getElementById('connectSendBtn');
+    if (sendBtn && connectionId) {
+        sendBtn._origOnclick = sendBtn.onclick;
+        sendBtn.onclick = null;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Architect';
+        sendBtn.onclick = async function() {
+            var msg = document.getElementById('connectIntroMsg').value.trim();
+            var projId = connectState.selectedProjectId;
+            // Build message text
+            var projLabel = '';
+            if (projId) {
+                var allProj = window._cachedClientProjects || [];
+                var matched = allProj.find(function(p){ return p._id === projId; });
+                if (matched) projLabel = matched.title || matched.name || '';
+            }
+            var fullMsg = projLabel
+                ? '[New Project Request] ' + projLabel + (msg ? '\n' + msg : '')
+                : (msg || '[New Project Request]');
+
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            try {
+                var r = await fetch(CLIENT_API + '/connections/' + connectionId + '/messages', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ text: fullMsg })
+                });
+                var d = await r.json();
+                if (!d.success) throw new Error(d.message);
+                document.getElementById('connectBackdrop').classList.remove('open');
+                document.body.style.overflow = '';
+                showToast('Project request sent to ' + archName + ' via chat!', 'success');
+            } catch(err) {
+                showToast(err.message || 'Could not send message.', 'error');
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Architect';
+            }
+            // Restore original onclick for future normal use
+            sendBtn.onclick = sendBtn._origOnclick || null;
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Request';
+            sendBtn.disabled = false;
+        };
     }
 }
 

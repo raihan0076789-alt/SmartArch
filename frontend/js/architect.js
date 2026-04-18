@@ -38,6 +38,7 @@ const ROOM_COLORS = {
   office:    { bg: 'rgba(116,185,255,0.3)',  border: '#74b9ff', hex: 0x74b9ff, dot: '#74b9ff' },
   garage:    { bg: 'rgba(130,140,155,0.3)',  border: '#828c9b', hex: 0x828c9b, dot: '#828c9b' },
   staircase: { bg: 'rgba(255,150,50,0.28)',  border: '#ff9632', hex: 0xff9632, dot: '#ff9632' },
+  balcony:   { bg: 'rgba(100,200,255,0.25)', border: '#64c8ff', hex: 0x64c8ff, dot: '#64c8ff' },
   other:     { bg: 'rgba(180,180,180,0.25)', border: '#aaa',    hex: 0xaaaaaa, dot: '#aaa'    }
 };
 
@@ -51,6 +52,7 @@ const ROOM_RATES = {
   office:    1900,
   garage:     900,
   staircase: 1400,
+  balcony:   1200,
   other:     1500
 };
 function getRoomRate(type){ return ROOM_RATES[type] || ROOM_RATES.other; }
@@ -380,11 +382,14 @@ function handleMouseMove(e){
   if(isResizing&&selectedRoom&&resizeHandle){
     const scale=getScale(),orig=dragStart.origRoom;
     const dx=(mx-dragStart.x)/scale,dy=(my-dragStart.y)/scale;
-    const minSize=1.5;let{x,z,width,depth}=orig;
-    if(resizeHandle.includes('e'))width=Math.max(minSize,snap(orig.width+dx));
-    if(resizeHandle.includes('s'))depth=Math.max(minSize,snap(orig.depth+dy));
-    if(resizeHandle.includes('w')){const nw=Math.max(minSize,snap(orig.width-dx));x=snap(orig.x+(orig.width-nw));width=nw;}
-    if(resizeHandle.includes('n')){const nd=Math.max(minSize,snap(orig.depth-dy));z=snap(orig.z+(orig.depth-nd));depth=nd;}
+    const minSize=1.5;
+    const minW=(selectedRoom.type==='garage')?6:minSize;
+    const minD=(selectedRoom.type==='garage')?6:minSize;
+    let{x,z,width,depth}=orig;
+    if(resizeHandle.includes('e'))width=Math.max(minW,snap(orig.width+dx));
+    if(resizeHandle.includes('s'))depth=Math.max(minD,snap(orig.depth+dy));
+    if(resizeHandle.includes('w')){const nw=Math.max(minW,snap(orig.width-dx));x=snap(orig.x+(orig.width-nw));width=nw;}
+    if(resizeHandle.includes('n')){const nd=Math.max(minD,snap(orig.depth-dy));z=snap(orig.z+(orig.depth-nd));depth=nd;}
     x=Math.max(0,Math.min(projectData.totalWidth-width,x));z=Math.max(0,Math.min(projectData.totalDepth-depth,z));
     // Only apply resize if it doesn't overlap another room
     if(!getOverlappingRooms(x,z,width,depth,selectedRoom).length){
@@ -496,7 +501,7 @@ function placeStaircaseAt(px,py){
 
 function addRoomOfType(type){
   const floor=projectData.floors[activeFloorIdx];
-  const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6}};
+  const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2}};
   const dim=defaults[type]||{w:4,d:4};
   let x=0,z=0,placed=false,tries=0;
   while(tries++<80){
@@ -505,7 +510,7 @@ function addRoomOfType(type){
     if(!getOverlappingRooms(x,z,dim.w,dim.d,null).length){placed=true;break;}
   }
   if(!placed){showToast('⚠️ No free space on this floor — resize the canvas or remove a room','error');return;}
-  const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage'};
+  const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage',balcony:'Balcony'};
   const room={name:names[type]||type,type,width:dim.w,depth:dim.d,x,z,height:floor.height||2.7,doors:[],windows:[]};
   floor.rooms.push(room);pushUndoState();selectedRoom=room;renderRooms();showRoomProperties(room);updateInfoPanel();drawFloorPlan();markUnsaved();
 }
@@ -601,7 +606,18 @@ function updateFloorTabs(){
   container.innerHTML=projectData.floors.map((f,i)=>`<button class="floor-tab ${activeFloorIdx===i?'active':''}" onclick="switchFloor(${i})">${f.name||`Floor ${i+1}`}</button>`).join('');
   updateFloorIsoButtons();
 }
-function switchFloor(idx){activeFloorIdx=idx;selectedRoom=null;updateFloorTabs();renderRooms();hideRoomProperties();drawFloorPlan();}
+
+function switchFloor(idx){
+  activeFloorIdx=idx;
+  selectedRoom=null;
+  updateFloorTabs();
+  renderRooms();
+  hideRoomProperties();
+  drawFloorPlan();
+  // Garage is ground-floor only — hide button on upper floors
+  const garageBtn=document.getElementById('garageRoomBtn');
+  if(garageBtn) garageBtn.style.display=activeFloorIdx===0?'':'none';
+}
 
 function drawFloorPlan(){
   const canvas=el('floorplanCanvas'),ctx=canvas.getContext('2d');
@@ -813,11 +829,26 @@ function showRoomProperties(room){
 }
 function hideRoomProperties(){const c=el('roomProperties');if(c)c.innerHTML='<p class="empty-msg">Select a room to edit</p>';}
 function updateRoomProp(prop,val){
-  if(!selectedRoom)return;selectedRoom[prop]=val;
-  if(['width','depth','x','z'].includes(prop)){selectedRoom.width=Math.max(1,selectedRoom.width);selectedRoom.depth=Math.max(1,selectedRoom.depth);selectedRoom.x=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,selectedRoom.x));selectedRoom.z=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,selectedRoom.z));}
+  if(!selectedRoom)return;
+  if(selectedRoom.type==='garage'&&(prop==='width'||prop==='depth')){
+    const minGarage=6;
+    if(val<minGarage){
+      showToast(`⚠️ Garage ${prop} cannot be less than ${minGarage}m — required for vehicle clearance.`,'error');
+      // Reset the input back to current value
+      const inputs=document.querySelectorAll('#roomProperties input[type="number"]');
+      inputs.forEach(inp=>{if((prop==='width'&&inp.closest('.form-group')?.querySelector('label')?.textContent==='Width (m)')||(prop==='depth'&&inp.closest('.form-group')?.querySelector('label')?.textContent==='Depth (m)'))inp.value=selectedRoom[prop];});
+      return;
+    }
+  }
+  selectedRoom[prop]=val;
+  if(['width','depth','x','z'].includes(prop)){
+    if(selectedRoom.type==='garage'){selectedRoom.width=Math.max(6,selectedRoom.width);selectedRoom.depth=Math.max(6,selectedRoom.depth);}
+    else{selectedRoom.width=Math.max(1,selectedRoom.width);selectedRoom.depth=Math.max(1,selectedRoom.depth);}
+    selectedRoom.x=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,selectedRoom.x));
+    selectedRoom.z=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,selectedRoom.z));
+  }
   renderRooms();drawFloorPlan();updateInfoPanel();markUnsaved();
 }
-
 function updateProjectSettings(){
   if(!projectData)return;
   projectData.totalWidth=parseFloat(el('totalWidth').value)||20;
@@ -2045,7 +2076,7 @@ async function sendOllamaMessage(){
     const reply=data.data?.reply||data.error||'No response.';
     _chatAppend('ai', _formatReply(reply));
 
-    // Store in history for context on next turn
+    // Store in history for context on next turn  
     _chatHistory.push({role:'user',    content:text});
     _chatHistory.push({role:'assistant',content:reply});
     if(_chatHistory.length>MAX_HISTORY*2) _chatHistory.splice(0,2);
