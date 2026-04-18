@@ -1124,40 +1124,108 @@
             box(0.10, 0.08, rd - 0.14, railingColor, sx, fl + railH, cz + 0.04, 0.85, 'furniture');
         });
 
-        // ── Bistro table + 2 chairs ───────────────────────────────────
+       // ── Bistro table + 2 chairs ───────────────────────────────────
         if (rw >= 3.0 && rd >= 2.0) {
             const tX = cx + rw * 0.12, tZ = cz + rd * 0.18;
             // Tabletop
-            cyl(0.44, 0.44, 0.04, 16, 0xd4aa70, tX, fl + 0.74, tZ, 0.75, 'furniture');
+            cyl(0.44, 0.44, 0.04, 16, 0xd4aa70, tX, fl + 0.74, tZ, 'furniture');
             // Pedestal
-            cyl(0.04, 0.04, 0.72, 8, 0x888888, tX, fl + 0.36, tZ, 0.7, 'furniture');
-            // Base
-            cyl(0.26, 0.26, 0.04, 10, 0x707070, tX, fl + 0.04, tZ, 0.65, 'furniture');
+            cyl(0.04, 0.04, 0.72, 8, 0x888888, tX, fl + 0.36, tZ, 'furniture');
+            // Base disc
+            cyl(0.26, 0.26, 0.04, 10, 0x707070, tX, fl + 0.02, tZ, 'furniture');
 
-            // Chairs
-            [[-0.52, 0, 0], [0.52, 0, Math.PI]].forEach(([dx, dz, ry]) => {
-                const chX = tX + dx, chZ = tZ + dz;
-                box(0.40, 0.04, 0.38, 0x8b5c2a, chX, fl + 0.46, chZ, 0.8, 'furniture');
-                box(0.38, 0.40, 0.04, 0x8b5c2a, chX, fl + 0.68, chZ + 0.18, 0.8, 'furniture');
-                [[-0.16, -0.16], [-0.16, 0.16], [0.16, -0.16], [0.16, 0.16]].forEach(([lx, lz]) =>
-                    box(0.04, 0.46, 0.04, 0x6b4520, chX + lx, fl + 0.23, chZ + lz, 0.85, 'furniture'));
+            // Chairs — dx ±0.82 gives clear gap from table edge (radius 0.44)
+            // sign drives which way the backrest faces away from table
+            [[-0.82, -1], [0.82, 1]].forEach(([dx, sign]) => {
+                const chX = tX + dx;
+                // Seat
+                box(0.40, 0.04, 0.38, 0x8b5c2a, chX, fl + 0.46, tZ, 0.8, 'furniture');
+                // Backrest — offset away from table
+                box(0.38, 0.40, 0.04, 0x8b5c2a, chX, fl + 0.68, tZ + sign * 0.19, 0.8, 'furniture');
+                // 4 legs — inset from seat corners
+                [[-0.15, -0.15], [-0.15, 0.15], [0.15, -0.15], [0.15, 0.15]].forEach(([lx, lz]) =>
+                    box(0.04, 0.46, 0.04, 0x6b4520, chX + lx, fl + 0.23, tZ + lz, 0.85, 'furniture'));
             });
         }
 
-        // ── Corner terracotta planter ─────────────────────────────────
-        const pX = cx - rw / 2 + 0.32, pZ = cz + rd / 2 - 0.32;
-        cyl(0.18, 0.22, 0.32, 10, 0xc87941, pX, fl + 0.16, pZ, 0.9, 'furniture');
-        cyl(0.16, 0.14, 0.06, 10, 0x3a5c1a, pX, fl + 0.33, pZ, 0.8, 'furniture');
-        [0, 0.26, 0.50, 0.72].forEach(h => {
-            const r2 = 0.22 - h * 0.16;
-            if (r2 > 0.03) cyl(r2, r2 * 0.8, 0.12, 8,
-                h < 0.4 ? 0x2d6e1a : 0x3a8a22, pX, fl + 0.36 + h, pZ, 0.85, 'furniture');
+        // ── Plants & Greenery ─────────────────────────────────────────
+
+        // 1) Large terracotta floor planter (back-left corner)
+        const pX = cx - rw / 2 + 0.35, pZ = cz + rd / 2 - 0.35;
+        cyl(0.20, 0.24, 0.36, 12, 0xc87941, pX, fl + 0.18, pZ, 'furniture');  // pot
+        cyl(0.18, 0.16, 0.07, 12, 0x5a3a10, pX, fl + 0.375, pZ, 'furniture'); // soil
+        // Layered bush foliage
+        [[0.22, 0.24, 0], [0.18, 0.20, 0.28], [0.13, 0.14, 0.50], [0.08, 0.09, 0.68]].forEach(([r1, r2, h]) =>
+            cyl(r1, r2, 0.16, 9, h < 0.4 ? 0x2d7a1a : 0x3a9a22, pX, fl + 0.44 + h, pZ, 'furniture'));
+
+        // 2) Tall potted palm / tropical plant (back-right corner)
+        const p2X = cx + rw / 2 - 0.35, p2Z = cz + rd / 2 - 0.35;
+        cyl(0.14, 0.18, 0.30, 10, 0xb06030, p2X, fl + 0.15, p2Z, 'furniture');  // ceramic pot
+        cyl(0.12, 0.10, 0.06, 10, 0x4a3010, p2X, fl + 0.33, p2Z, 'furniture');  // soil
+        cyl(0.04, 0.05, 0.90, 8,  0x6b8c3a, p2X, fl + 0.78, p2Z, 'furniture');  // trunk
+        // Fan leaves — 5 drooping fronds
+        [0, 0.63, 1.26, 1.88, 2.51].forEach((angle, i) => {
+            const lx = Math.sin(angle) * 0.38, lz = Math.cos(angle) * 0.38;
+            box(0.06, 0.04, 0.42, 0x3a8822,
+                p2X + lx * 0.5, fl + 1.22 - i * 0.04, p2Z + lz * 0.5,
+                0.7, 'furniture');
         });
+
+        // 3) Small succulent on railing ledge / near wall
+        const s1X = cx + rw * 0.32, s1Z = cz + rd / 2 - 0.14;
+        cyl(0.09, 0.11, 0.14, 8, 0xa05a28, s1X, fl + 0.07, s1Z, 'furniture'); // small pot
+        cyl(0.08, 0.07, 0.03, 8, 0x3a2a10, s1X, fl + 0.15, s1Z, 'furniture'); // soil
+        // Rosette of thick leaves
+        [0, 1.05, 2.09, 3.14, 4.19, 5.24].forEach(angle => {
+            const lx = Math.sin(angle) * 0.07, lz = Math.cos(angle) * 0.07;
+            box(0.05, 0.07, 0.05, 0x5aaa40, s1X + lx, fl + 0.19, s1Z + lz, 0.6, 'furniture');
+        });
+
+        // 4) Hanging vine from pergola beams (modern/luxury only)
+        if (currentStyle === 'modern' || currentStyle === 'luxury') {
+            const vineCol = 0x2d6e1a;
+            const leafCol = 0x3a8822;
+            // 3 vine strands dangling from ceiling
+            [cx - rw * 0.18, cx, cx + rw * 0.18].forEach((vx, vi) => {
+                const vz = cz - rd * 0.15;
+                // Stem — thin vertical cylinder
+                cyl(0.012, 0.012, 0.55 + vi * 0.08, 6, vineCol,
+                    vx, fl + WALL_H - 0.30 - vi * 0.04, vz, 'furniture');
+                // Leaf clusters at intervals
+                [0.15, 0.32, 0.50].forEach((drop, li) => {
+                    const leafX = vx + (li % 2 === 0 ? 0.06 : -0.06);
+                    box(0.10, 0.06, 0.10, leafCol,
+                        leafX, fl + WALL_H - 0.18 - drop - vi * 0.04, vz,
+                        0.6, 'furniture');
+                });
+            });
+        }
+
+        // 5) Flower box on front railing (colorful blooms)
+        if (rw >= 4.0) {
+            const fbZ = cz - rd / 2 + 0.12; // front railing inner face
+            const fbW = Math.min(rw * 0.45, 1.8);
+            // Wooden trough
+            box(fbW, 0.18, 0.18, 0x6b4520, cx, fl + 0.12, fbZ, 0.7, 'furniture');
+            // Soil
+            box(fbW - 0.04, 0.05, 0.14, 0x3a2a10, cx, fl + 0.225, fbZ, 0.9, 'furniture');
+            // Flower stems + blooms
+            const flowerColors = [0xff4466, 0xff8c00, 0xffdd00, 0xff69b4, 0xcc44ff];
+            const flowerCount  = Math.floor(fbW / 0.28);
+            for (let fi = 0; fi < flowerCount; fi++) {
+                const fx = cx - fbW / 2 + 0.18 + fi * (fbW - 0.18) / Math.max(flowerCount - 1, 1);
+                // Stem
+                box(0.02, 0.22, 0.02, 0x3a7a1a, fx, fl + 0.36, fbZ, 0.6, 'furniture');
+                // Bloom — circular top
+                cyl(0.07, 0.07, 0.04, 8, flowerColors[fi % flowerColors.length],
+                    fx, fl + 0.50, fbZ, 'furniture');
+            }
+        }
 
         // ── Outdoor wall lantern ──────────────────────────────────────
         const lnZ = cz + rd / 2 - 0.10;
         box(0.08, 0.26, 0.08, 0x444444, cx - rw * 0.28, fl + WALL_H - 0.50, lnZ, 0.8, 'furniture');
-        cyl(0.065, 0.065, 0.15, 8, 0xfffde0, cx - rw * 0.28, fl + WALL_H - 0.28, lnZ, 0.12, 'furniture');
+        cyl(0.065, 0.065, 0.15, 8, 0xfffde0, cx - rw * 0.28, fl + WALL_H - 0.28, lnZ, 'furniture');
 
         // ── Traditional drying pole ───────────────────────────────────
         if (currentStyle === 'traditional') {
