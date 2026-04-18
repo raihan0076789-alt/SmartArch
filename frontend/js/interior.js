@@ -148,6 +148,16 @@
 
         buildScene(projectData);
         setupInteriorMouseControls(canvas);
+
+        // Fix: reset roof visibility and camera on every init
+        layers.roof = false;
+        if (groups.roof) groups.roof.forEach(m => m.visible = false);
+        targetPhi = 0.5;
+        targetRadius = Math.max(projectData.totalWidth || 20, projectData.totalDepth || 15) * 1.4;
+        radius = targetRadius;
+        lookTarget.set(0, 1.5, 0);
+        lookCurrent.set(0, 1.5, 0);
+
         updateCameraPosition();
         animate();
 
@@ -172,9 +182,15 @@
         let totalH = 0;
         floors.forEach(f => { totalH += f.height || WALL_H; });
 
-        // Default camera look-at centre of house (vertically centred over all floors)
-        lookTarget.set(0, totalH * 0.45, 0);
-        lookCurrent.set(0, totalH * 0.45, 0);
+        // Camera look-at: centroid of all rooms so single/small rooms are always visible
+        const _allRooms = floors.flatMap(f => f.rooms || []);
+        let _lookX = 0, _lookZ = 0;
+        if (_allRooms.length > 0) {
+            _allRooms.forEach(r => { _lookX += ox + r.x + r.width / 2; _lookZ += oz + r.z + r.depth / 2; });
+            _lookX /= _allRooms.length; _lookZ /= _allRooms.length;
+        }
+        lookTarget.set(_lookX, totalH * 0.45, _lookZ);
+        lookCurrent.set(_lookX, totalH * 0.45, _lookZ);
         targetRadius = Math.max(HW, HD) * 1.5 + totalH * 0.4;
         radius = targetRadius;
 

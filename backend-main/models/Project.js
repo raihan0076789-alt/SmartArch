@@ -5,7 +5,7 @@ const roomSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     type: {
         type: String,
-        enum: ['living', 'bedroom', 'bathroom', 'kitchen', 'dining', 'office', 'garage', 'storage', 'staircase', 'other'],
+        enum: ['living', 'bedroom', 'bathroom', 'kitchen', 'dining', 'office', 'garage', 'storage', 'staircase', 'balcony', 'other'],
         default: 'other'
     },
     width: { type: Number, required: true, min: 0 },

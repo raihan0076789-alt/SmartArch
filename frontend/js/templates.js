@@ -154,7 +154,7 @@
       ...Array(g('tmplDining')).fill({ type: 'dining', ...sizing.dining }),
       ...Array(g('tmplOffice')).fill({ type: 'office', ...sizing.office }),
       ...Array(g('tmplGarage')).fill({ type: 'garage', ...sizing.garage }),
-      ...Array(g('tmplBalcony')).fill({ type: 'other', ...sizing.balcony }),
+      ...Array(g('tmplBalcony')).fill({ type: 'balcony', ...sizing.balcony }),
       ...(gc('tmplStairs') ? [{ type: 'staircase', ...sizing.stairs }] : [])
     ];
 
@@ -305,7 +305,7 @@
     // Balcony
     for (let i = 0; i < counts.balcony; i++) {
       const fi = Math.min(numFloors - 1, i === 0 ? 0 : 1);
-      addRoom(fi, 'other', 'Balcony', sizing.balcony.w, sizing.balcony.d);
+      addRoom(fi, 'balcony', 'Balcony', sizing.balcony.w, sizing.balcony.d);
     }
 
     return floorDefs;
