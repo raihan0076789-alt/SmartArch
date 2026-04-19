@@ -129,8 +129,8 @@
         layers.walls     = document.getElementById('layerWalls')?.checked !== false;
         layers.labels    = document.getElementById('layerLabels')?.checked !== false;
 
-        const W = container.clientWidth || 800;
-        const H = container.clientHeight || 600;
+        const W = (container.clientWidth  > 10 ? container.clientWidth  : container.parentElement?.clientWidth  || 800);
+        const H = (container.clientHeight > 10 ? container.clientHeight : container.parentElement?.clientHeight || 600);
 
         scene = new THREE.Scene();
         scene.background = new THREE.Color(T.bg);
@@ -149,14 +149,31 @@
         buildScene(projectData);
         setupInteriorMouseControls(canvas);
 
-        // Fix: reset roof visibility and camera on every init
+        // Reset roof visibility
         layers.roof = false;
         if (groups.roof) groups.roof.forEach(m => m.visible = false);
-        targetPhi = 0.5;
-        targetRadius = Math.max(projectData.totalWidth || 20, projectData.totalDepth || 15) * 1.4;
-        radius = targetRadius;
-        lookTarget.set(0, 1.5, 0);
-        lookCurrent.set(0, 1.5, 0);
+
+        // Camera reset — multi-floor aware
+        const _floors = projectData.floors || [];
+        let _totalH = 0;
+        _floors.forEach(f => { _totalH += f.height || WALL_H; });
+        // Pick a look-at Y that sits at mid-height of the first floor with rooms
+        let _camY = Math.min(1.5, _totalH * 0.3);
+        let _camX = 0, _camZ = 0;
+        const _allR = _floors.flatMap(f => f.rooms || []);
+        if (_allR.length > 0) {
+            const _ox = -(projectData.totalWidth || 20) / 2;
+            const _oz = -(projectData.totalDepth || 15) / 2;
+            _allR.forEach(r => { _camX += _ox + r.x + r.width / 2; _camZ += _oz + r.z + r.depth / 2; });
+            _camX /= _allR.length; _camZ /= _allR.length;
+        }
+        const _maxDim = Math.max(projectData.totalWidth || 20, projectData.totalDepth || 15);
+        targetPhi    = 0.52;
+        targetTheta  = 0.6;
+        targetRadius = Math.max(_maxDim * 0.9, 18);
+        radius       = targetRadius;
+        lookTarget.set(_camX, 1.5, _camZ);
+        lookCurrent.set(_camX, 1.5, _camZ);
 
         updateCameraPosition();
         animate();
@@ -172,8 +189,8 @@
 
     // ── Build scene from projectData (multi-floor aware) ─────
     function buildScene(pd) {
-        const HW = pd.totalWidth;
-        const HD = pd.totalDepth;
+        const HW = pd.totalWidth  || 20;
+        const HD = pd.totalDepth  || 15;
         const ox = -HW / 2, oz = -HD / 2;
         const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
         const floors = pd.floors || [{ rooms: [], height: WALL_H }];
@@ -189,9 +206,9 @@
             _allRooms.forEach(r => { _lookX += ox + r.x + r.width / 2; _lookZ += oz + r.z + r.depth / 2; });
             _lookX /= _allRooms.length; _lookZ /= _allRooms.length;
         }
-        lookTarget.set(_lookX, totalH * 0.45, _lookZ);
-        lookCurrent.set(_lookX, totalH * 0.45, _lookZ);
-        targetRadius = Math.max(HW, HD) * 1.5 + totalH * 0.4;
+        lookTarget.set(_lookX, 1.5, _lookZ);
+        lookCurrent.set(_lookX, 1.5, _lookZ);
+        targetRadius = Math.max(HW, HD) * 1.1 + 5;
         radius = targetRadius;
 
         // ── Style-driven lights ──
@@ -279,11 +296,8 @@
                     mat(fc, floorRough, floorMetal), cx, baseY + 0.03, cz, 0, 0, 'walls');
             });
 
-            // Exterior walls for this floor
-            wall(HW + WT * 2, floorH, WT, 0, wy, oz);
-            wall(HW + WT * 2, floorH, WT, 0, wy, oz + HD);
-            wall(WT, floorH, HD + WT * 2, ox, wy, 0);
-            wall(WT, floorH, HD + WT * 2, ox + HW, wy, 0);
+            // Exterior walls — cut openings where balconies touch boundary
+            buildExteriorWalls(rooms, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI);
 
             // Interior partition walls
             buildInteriorWalls(rooms, HW, HD, ox, oz, wy, floorH);
@@ -449,6 +463,158 @@
     }
 
     // ── Interior partition walls (simple grid between rooms) ──
+    // ── Exterior walls with balcony openings ─────────────────
+    function buildExteriorWalls(rooms, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI) {
+        const THRESH = 0.35;
+        const balconies = rooms.filter(r => r.type === 'balcony');
+
+        // Helper: build wall segments along X axis skipping balcony spans
+        function segsX(skipRanges) {
+            const sorted = skipRanges.slice().sort((a,b) => a.from - b.from);
+            const segs = []; let cur = ox;
+            sorted.forEach(({from, to}) => { if (from > cur + 0.01) segs.push({from: cur, to: from}); cur = Math.max(cur, to); });
+            if (cur < ox + HW - 0.01) segs.push({from: cur, to: ox + HW});
+            return segs;
+        }
+        function segsZ(skipRanges) {
+            const sorted = skipRanges.slice().sort((a,b) => a.from - b.from);
+            const segs = []; let cur = oz;
+            sorted.forEach(({from, to}) => { if (from > cur + 0.01) segs.push({from: cur, to: from}); cur = Math.max(cur, to); });
+            if (cur < oz + HD - 0.01) segs.push({from: cur, to: oz + HD});
+            return segs;
+        }
+
+        // Collect balcony spans per boundary edge
+        const skipFront = [], skipBack = [], skipLeft = [], skipRight = [];
+        balconies.forEach(r => {
+            if (r.z < THRESH)               skipFront.push({from: ox + r.x,         to: ox + r.x + r.width});
+            if (r.z + r.depth > HD - THRESH) skipBack.push ({from: ox + r.x,         to: ox + r.x + r.width});
+            if (r.x < THRESH)               skipLeft.push ({from: oz + r.z,         to: oz + r.z + r.depth});
+            if (r.x + r.width > HW - THRESH) skipRight.push({from: oz + r.z,         to: oz + r.z + r.depth});
+        });
+
+        const addWallSeg = (w, h, d, x, y, z) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wMat);
+            m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+            scene.add(m); groups.walls.push(m);
+        };
+
+        // Front wall (z = oz)
+        segsX(skipFront).forEach(({from, to}) => {
+            const w = to - from, cx = (from + to) / 2;
+            addWallSeg(w + WT, floorH, WT, cx, wy, oz);
+        });
+        // Back wall (z = oz + HD)
+        segsX(skipBack).forEach(({from, to}) => {
+            const w = to - from, cx = (from + to) / 2;
+            addWallSeg(w + WT, floorH, WT, cx, wy, oz + HD);
+        });
+        // Left wall (x = ox)
+        segsZ(skipLeft).forEach(({from, to}) => {
+            const d = to - from, cz = (from + to) / 2;
+            addWallSeg(WT, floorH, d + WT, ox, wy, cz);
+        });
+        // Right wall (x = ox + HW)
+        segsZ(skipRight).forEach(({from, to}) => {
+            const d = to - from, cz = (from + to) / 2;
+            addWallSeg(WT, floorH, d + WT, ox + HW, wy, cz);
+        });
+
+        // ── For each balcony: glass balustrade + slab + brackets ──────
+        const railColor = currentStyle === 'luxury' ? 0xc9a84c :
+                          currentStyle === 'traditional' ? 0x5c3d1e :
+                          currentStyle === 'minimalist'  ? 0x999999 : 0x607080;
+        const metalMat = new THREE.MeshStandardMaterial({color: railColor, roughness: 0.35, metalness: 0.55});
+        const glassMat = new THREE.MeshStandardMaterial({color: 0x88ccee, transparent: true, opacity: 0.32, roughness: 0.05, metalness: 0.1, side: THREE.DoubleSide});
+        const slabMat  = new THREE.MeshStandardMaterial({color: 0xb8bcc4, roughness: 0.88});
+        const bracketMat = new THREE.MeshStandardMaterial({color: 0x555566, roughness: 0.7});
+
+        balconies.forEach(r => {
+            const rcx = ox + r.x + r.width / 2;
+            const rcz = oz + r.z + r.depth / 2;
+            const flY  = baseY;
+            const openFront = r.z < THRESH;
+            const openBack  = r.z + r.depth > HD - THRESH;
+            const openLeft  = r.x < THRESH;
+            const openRight = r.x + r.width > HW - THRESH;
+
+            // Balcony slab
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(r.width + WT, 0.14, r.depth + WT), slabMat);
+            slab.position.set(rcx, flY + 0.09, rcz);
+            slab.castShadow = true; slab.receiveShadow = true;
+            scene.add(slab); groups.walls.push(slab);
+
+            const railH = 1.05;
+
+            function addRail(isH, cx2, cz2, len) {
+                // Bottom bar
+                const bMesh = new THREE.Mesh(new THREE.BoxGeometry(isH ? len : WT * 0.5, 0.06, isH ? WT * 0.5 : len), metalMat);
+                bMesh.position.set(cx2, flY + 0.08, cz2); scene.add(bMesh); groups.walls.push(bMesh);
+                // Top handrail
+                const tMesh = new THREE.Mesh(new THREE.BoxGeometry(isH ? len + 0.04 : 0.1, 0.08, isH ? 0.1 : len + 0.04), metalMat);
+                tMesh.position.set(cx2, flY + railH + 0.04, cz2); scene.add(tMesh); groups.walls.push(tMesh);
+                // Glass panel
+                const gMesh = new THREE.Mesh(new THREE.BoxGeometry(isH ? len - 0.06 : 0.05, railH - 0.1, isH ? 0.05 : len - 0.06), glassMat);
+                gMesh.position.set(cx2, flY + railH / 2 + 0.05, cz2); scene.add(gMesh); groups.walls.push(gMesh);
+                // Corner posts
+                [-0.5, 0.5].forEach(s => {
+                    const px = isH ? cx2 + s * (len - 0.06) : cx2;
+                    const pz = isH ? cz2 : cz2 + s * (len - 0.06);
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, railH, 0.07), metalMat);
+                    post.position.set(px, flY + railH / 2, pz); post.castShadow = true;
+                    scene.add(post); groups.walls.push(post);
+                });
+            }
+
+            // Slab edge fascia + balustrade on each open side
+            if (openFront) {
+                addRail(true, rcx, oz + r.z + WT * 0.5, r.width - 0.04);
+                const f = new THREE.Mesh(new THREE.BoxGeometry(r.width + WT, 0.13, WT + 0.04), slabMat);
+                f.position.set(rcx, flY + 0.14, oz + r.z - WT * 0.5); scene.add(f); groups.walls.push(f);
+            }
+            if (openBack) {
+                addRail(true, rcx, oz + r.z + r.depth - WT * 0.5, r.width - 0.04);
+                const f = new THREE.Mesh(new THREE.BoxGeometry(r.width + WT, 0.13, WT + 0.04), slabMat);
+                f.position.set(rcx, flY + 0.14, oz + r.z + r.depth + WT * 0.5); scene.add(f); groups.walls.push(f);
+            }
+            if (openLeft) {
+                addRail(false, ox + r.x + WT * 0.5, rcz, r.depth - 0.04);
+                const f = new THREE.Mesh(new THREE.BoxGeometry(WT + 0.04, 0.13, r.depth + WT), slabMat);
+                f.position.set(ox + r.x - WT * 0.5, flY + 0.14, rcz); scene.add(f); groups.walls.push(f);
+            }
+            if (openRight) {
+                addRail(false, ox + r.x + r.width - WT * 0.5, rcz, r.depth - 0.04);
+                const f = new THREE.Mesh(new THREE.BoxGeometry(WT + 0.04, 0.13, r.depth + WT), slabMat);
+                f.position.set(ox + r.x + r.width + WT * 0.5, flY + 0.14, rcz); scene.add(f); groups.walls.push(f);
+            }
+
+            // Structural brackets under slab (visible from exterior)
+            const bracketCount = Math.max(2, Math.floor(Math.max(r.width, r.depth) / 2.2));
+            for (let bi = 0; bi < bracketCount; bi++) {
+                const t = (bi + 0.5) / bracketCount;
+                const brk = new THREE.Mesh(
+                    new THREE.BoxGeometry(
+                        (openFront || openBack) ? 0.12 : r.width * 0.82,
+                        0.10,
+                        (openFront || openBack) ? r.depth * 0.82 : 0.12
+                    ), bracketMat
+                );
+                brk.position.set(
+                    (openFront || openBack) ? ox + r.x + t * r.width : rcx,
+                    flY + 0.03,
+                    (openFront || openBack) ? rcz : oz + r.z + t * r.depth
+                );
+                brk.castShadow = true; scene.add(brk); groups.walls.push(brk);
+            }
+        });
+
+        // Full walls on sides with NO balcony
+        if (skipFront.length === 0) addWallSeg(HW + WT * 2, floorH, WT, 0, wy, oz);
+        if (skipBack.length  === 0) addWallSeg(HW + WT * 2, floorH, WT, 0, wy, oz + HD);
+        if (skipLeft.length  === 0) addWallSeg(WT, floorH, HD + WT * 2, ox, wy, 0);
+        if (skipRight.length === 0) addWallSeg(WT, floorH, HD + WT * 2, ox + HW, wy, 0);
+    }
+
     function buildInteriorWalls(rooms, HW, HD, ox, oz, wy, floorH) {
         const wallH = floorH || WALL_H;
         const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
@@ -494,11 +660,11 @@
 
     // ── Auto-windows (used when no user-placed windows exist) ──
     function buildWindows(rooms, HW, HD, ox, oz, baseY, floorH) {
-        // baseY defaults to 0.22 (ground floor), floorH to WALL_H for backward compat
         const by = (baseY !== undefined) ? baseY : 0.22;
         const fH = (floorH !== undefined) ? floorH : WALL_H;
         const wy2 = by + fH * 0.62;
         rooms.forEach(room => {
+            if (room.type === 'balcony') return; // balcony has open wall — no auto-window
             const cx = ox + room.x + room.width / 2;
             const cz = oz + room.z + room.depth / 2;
             // Front face window
@@ -1068,8 +1234,6 @@
     }
 
     function furnishBalcony(cx, cz, fl, rw, rd) {
-        const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
-
         // ── Outdoor tile floor ────────────────────────────────────────
         const tileColor = currentStyle === 'luxury'      ? 0xd4c9b0 :
                           currentStyle === 'traditional' ? 0xc8b88a :
@@ -1124,7 +1288,7 @@
             box(0.10, 0.08, rd - 0.14, railingColor, sx, fl + railH, cz + 0.04, 0.85, 'furniture');
         });
 
-       // ── Bistro table + 2 chairs ───────────────────────────────────
+        // ── Bistro table + 2 chairs ───────────────────────────────────
         if (rw >= 3.0 && rd >= 2.0) {
             const tX = cx + rw * 0.12, tZ = cz + rd * 0.18;
             // Tabletop
@@ -1134,91 +1298,67 @@
             // Base disc
             cyl(0.26, 0.26, 0.04, 10, 0x707070, tX, fl + 0.02, tZ, 'furniture');
 
-            // Chairs — dx ±0.82 gives clear gap from table edge (radius 0.44)
-            // sign drives which way the backrest faces away from table
+            // Chairs — ±0.82 gives clear gap from table edge (radius 0.44)
             [[-0.82, -1], [0.82, 1]].forEach(([dx, sign]) => {
                 const chX = tX + dx;
-                // Seat
                 box(0.40, 0.04, 0.38, 0x8b5c2a, chX, fl + 0.46, tZ, 0.8, 'furniture');
-                // Backrest — offset away from table
                 box(0.38, 0.40, 0.04, 0x8b5c2a, chX, fl + 0.68, tZ + sign * 0.19, 0.8, 'furniture');
-                // 4 legs — inset from seat corners
-                [[-0.15, -0.15], [-0.15, 0.15], [0.15, -0.15], [0.15, 0.15]].forEach(([lx, lz]) =>
+                [[-0.15, -0.15],[-0.15, 0.15],[0.15, -0.15],[0.15, 0.15]].forEach(([lx, lz]) =>
                     box(0.04, 0.46, 0.04, 0x6b4520, chX + lx, fl + 0.23, tZ + lz, 0.85, 'furniture'));
             });
         }
 
-        // ── Plants & Greenery ─────────────────────────────────────────
-
-        // 1) Large terracotta floor planter (back-left corner)
+        // ── Large terracotta floor planter (back-left corner) ─────────
         const pX = cx - rw / 2 + 0.35, pZ = cz + rd / 2 - 0.35;
-        cyl(0.20, 0.24, 0.36, 12, 0xc87941, pX, fl + 0.18, pZ, 'furniture');  // pot
-        cyl(0.18, 0.16, 0.07, 12, 0x5a3a10, pX, fl + 0.375, pZ, 'furniture'); // soil
-        // Layered bush foliage
+        cyl(0.20, 0.24, 0.36, 12, 0xc87941, pX, fl + 0.18, pZ, 'furniture');
+        cyl(0.18, 0.16, 0.07, 12, 0x5a3a10, pX, fl + 0.375, pZ, 'furniture');
         [[0.22, 0.24, 0], [0.18, 0.20, 0.28], [0.13, 0.14, 0.50], [0.08, 0.09, 0.68]].forEach(([r1, r2, h]) =>
             cyl(r1, r2, 0.16, 9, h < 0.4 ? 0x2d7a1a : 0x3a9a22, pX, fl + 0.44 + h, pZ, 'furniture'));
 
-        // 2) Tall potted palm / tropical plant (back-right corner)
+        // ── Tall potted plant (back-right corner) ─────────────────────
         const p2X = cx + rw / 2 - 0.35, p2Z = cz + rd / 2 - 0.35;
-        cyl(0.14, 0.18, 0.30, 10, 0xb06030, p2X, fl + 0.15, p2Z, 'furniture');  // ceramic pot
-        cyl(0.12, 0.10, 0.06, 10, 0x4a3010, p2X, fl + 0.33, p2Z, 'furniture');  // soil
-        cyl(0.04, 0.05, 0.90, 8,  0x6b8c3a, p2X, fl + 0.78, p2Z, 'furniture');  // trunk
-        // Fan leaves — 5 drooping fronds
+        cyl(0.14, 0.18, 0.30, 10, 0xb06030, p2X, fl + 0.15, p2Z, 'furniture');
+        cyl(0.12, 0.10, 0.06, 10, 0x4a3010, p2X, fl + 0.33, p2Z, 'furniture');
+        cyl(0.04, 0.05, 0.90, 8,  0x6b8c3a, p2X, fl + 0.78, p2Z, 'furniture');
         [0, 0.63, 1.26, 1.88, 2.51].forEach((angle, i) => {
             const lx = Math.sin(angle) * 0.38, lz = Math.cos(angle) * 0.38;
-            box(0.06, 0.04, 0.42, 0x3a8822,
-                p2X + lx * 0.5, fl + 1.22 - i * 0.04, p2Z + lz * 0.5,
-                0.7, 'furniture');
+            box(0.06, 0.04, 0.42, 0x3a8822, p2X + lx * 0.5, fl + 1.22 - i * 0.04, p2Z + lz * 0.5, 0.7, 'furniture');
         });
 
-        // 3) Small succulent on railing ledge / near wall
+        // ── Small succulent near rear wall ────────────────────────────
         const s1X = cx + rw * 0.32, s1Z = cz + rd / 2 - 0.14;
-        cyl(0.09, 0.11, 0.14, 8, 0xa05a28, s1X, fl + 0.07, s1Z, 'furniture'); // small pot
-        cyl(0.08, 0.07, 0.03, 8, 0x3a2a10, s1X, fl + 0.15, s1Z, 'furniture'); // soil
-        // Rosette of thick leaves
+        cyl(0.09, 0.11, 0.14, 8, 0xa05a28, s1X, fl + 0.07, s1Z, 'furniture');
+        cyl(0.08, 0.07, 0.03, 8, 0x3a2a10, s1X, fl + 0.15, s1Z, 'furniture');
         [0, 1.05, 2.09, 3.14, 4.19, 5.24].forEach(angle => {
             const lx = Math.sin(angle) * 0.07, lz = Math.cos(angle) * 0.07;
             box(0.05, 0.07, 0.05, 0x5aaa40, s1X + lx, fl + 0.19, s1Z + lz, 0.6, 'furniture');
         });
 
-        // 4) Hanging vine from pergola beams (modern/luxury only)
+        // ── Hanging vines (modern / luxury only) ─────────────────────
         if (currentStyle === 'modern' || currentStyle === 'luxury') {
-            const vineCol = 0x2d6e1a;
-            const leafCol = 0x3a8822;
-            // 3 vine strands dangling from ceiling
             [cx - rw * 0.18, cx, cx + rw * 0.18].forEach((vx, vi) => {
                 const vz = cz - rd * 0.15;
-                // Stem — thin vertical cylinder
-                cyl(0.012, 0.012, 0.55 + vi * 0.08, 6, vineCol,
-                    vx, fl + WALL_H - 0.30 - vi * 0.04, vz, 'furniture');
-                // Leaf clusters at intervals
+                cyl(0.012, 0.012, 0.55 + vi * 0.08, 6, 0x2d6e1a, vx, fl + WALL_H - 0.30 - vi * 0.04, vz, 'furniture');
                 [0.15, 0.32, 0.50].forEach((drop, li) => {
-                    const leafX = vx + (li % 2 === 0 ? 0.06 : -0.06);
-                    box(0.10, 0.06, 0.10, leafCol,
-                        leafX, fl + WALL_H - 0.18 - drop - vi * 0.04, vz,
-                        0.6, 'furniture');
+                    box(0.10, 0.06, 0.10, 0x3a8822,
+                        vx + (li % 2 === 0 ? 0.06 : -0.06),
+                        fl + WALL_H - 0.18 - drop - vi * 0.04, vz, 0.6, 'furniture');
                 });
             });
         }
 
-        // 5) Flower box on front railing (colorful blooms)
+        // ── Flower box on front railing ───────────────────────────────
         if (rw >= 4.0) {
-            const fbZ = cz - rd / 2 + 0.12; // front railing inner face
+            const fbZ = cz - rd / 2 + 0.12;
             const fbW = Math.min(rw * 0.45, 1.8);
-            // Wooden trough
             box(fbW, 0.18, 0.18, 0x6b4520, cx, fl + 0.12, fbZ, 0.7, 'furniture');
-            // Soil
             box(fbW - 0.04, 0.05, 0.14, 0x3a2a10, cx, fl + 0.225, fbZ, 0.9, 'furniture');
-            // Flower stems + blooms
             const flowerColors = [0xff4466, 0xff8c00, 0xffdd00, 0xff69b4, 0xcc44ff];
             const flowerCount  = Math.floor(fbW / 0.28);
             for (let fi = 0; fi < flowerCount; fi++) {
                 const fx = cx - fbW / 2 + 0.18 + fi * (fbW - 0.18) / Math.max(flowerCount - 1, 1);
-                // Stem
                 box(0.02, 0.22, 0.02, 0x3a7a1a, fx, fl + 0.36, fbZ, 0.6, 'furniture');
-                // Bloom — circular top
-                cyl(0.07, 0.07, 0.04, 8, flowerColors[fi % flowerColors.length],
-                    fx, fl + 0.50, fbZ, 'furniture');
+                cyl(0.07, 0.07, 0.04, 8, flowerColors[fi % flowerColors.length], fx, fl + 0.50, fbZ, 'furniture');
             }
         }
 

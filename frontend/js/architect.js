@@ -1,4 +1,4 @@
-  // ============================================================
+// ============================================================
   //  ARCHITECT STUDIO — Main JS (Fixed & Enhanced)
   //  Fixes: drag/drop doors+windows, 3D floor alignment,
   //         Ollama AI chat, backend integration
@@ -574,7 +574,9 @@
       if(el('wireframeBtn2'))el('wireframeBtn2').style.display='inline-flex';
       if(el('wireframeToggleBtn'))el('wireframeToggleBtn').style.display='inline-flex';
       if(el('fpCameraBtn'))el('fpCameraBtn').style.display='inline-flex';
-      if(typeof initInteriorView==='function')initInteriorView(projectData);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(typeof initInteriorView==='function')initInteriorView(projectData);
+      }));
     }
   }
 
@@ -614,11 +616,16 @@
     renderRooms();
     hideRoomProperties();
     drawFloorPlan();
-    // Garage is ground-floor only — hide button on upper floors
+    // Garage is ground-floor only — hide on upper floors
     const garageBtn=document.getElementById('garageRoomBtn');
     if(garageBtn) garageBtn.style.display=activeFloorIdx===0?'':'none';
+    // Balcony: only show on floor 2+ (index >= 1), and only when 2+ floors exist
+    const balconyBtn=document.getElementById('balconyRoomBtn');
+    if(balconyBtn){
+      const hasMultiFloor=projectData&&projectData.floors&&projectData.floors.length>1;
+      balconyBtn.style.display=(hasMultiFloor&&activeFloorIdx>0)?'':'none';
+    }
   }
-
   function drawFloorPlan(){
     const canvas=el('floorplanCanvas'),ctx=canvas.getContext('2d');
     if(!canvas||!projectData)return;
@@ -866,10 +873,16 @@
         window.showPlanLimitModal('multifloor','free');
     }
 
-    while(projectData.floors.length<numFloors){const lvl=projectData.floors.length+1;projectData.floors.push({level:lvl,name:`Floor ${lvl}`,height:floorH,rooms:[]});}
+   while(projectData.floors.length<numFloors){const lvl=projectData.floors.length+1;projectData.floors.push({level:lvl,name:`Floor ${lvl}`,height:floorH,rooms:[]});}
     while(projectData.floors.length>numFloors)projectData.floors.pop();
     projectData.floors.forEach(f=>f.height=floorH);
     if(activeFloorIdx>=projectData.floors.length)activeFloorIdx=projectData.floors.length-1;
+    // Sync balcony button visibility with floor count
+    const balconyBtn=document.getElementById('balconyRoomBtn');
+    if(balconyBtn){
+      const hasMultiFloor=projectData.floors.length>1;
+      balconyBtn.style.display=(hasMultiFloor&&activeFloorIdx>0)?'':'none';
+    }
     updateFloorTabs();drawFloorPlan();updateInfoPanel();markUnsaved();
     if(currentView==='3d')init3DView();
   }
