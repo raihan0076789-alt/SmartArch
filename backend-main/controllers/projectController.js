@@ -393,7 +393,7 @@ exports.updateProjectStatus = async (req, res) => {
             }
         }
 
-        // ── Client approves: notify architect ─────────────────────────────────
+        // ── Client approves: notify architect via chat message ─────────────────
         if (isClient && status === 'approved') {
             try {
                 const conn = await Connection.findOne({
@@ -402,6 +402,13 @@ exports.updateProjectStatus = async (req, res) => {
                     status:    'accepted'
                 });
                 if (conn) {
+                    // Push a system chat message so architect sees it even when offline
+                    conn.messages.push({
+                        sender:     req.user._id,
+                        senderRole: 'client',
+                        type:       'text',
+                        text:       `✅ I have approved the project "${project.name}". Great work! The project is now marked as complete.`
+                    });
                     conn.unreadByArchitect += 1;
                     await conn.save();
                 }

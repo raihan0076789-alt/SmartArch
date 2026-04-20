@@ -117,7 +117,8 @@
     banner.classList.add('visible');
 
     // Store on window so other code (e.g. save flow) can reference it if needed
-    window._clientConnectionContext = { connectionId, clientName, projectName: briefLabel };
+    const additionalProjectId = params.get('additionalProjectId') || null;
+    window._clientConnectionContext = { connectionId, clientName, projectName: briefLabel, additionalProjectId };
 
     // ── Case 1: blank workspace (no ?id=) — pre-fill title from client brief name ──
     if (!params.get('id') && projectName) {
@@ -1113,11 +1114,20 @@
               const conn = (connData.data || []).find(c => String(c._id) === String(ctx.connectionId));
               if (conn) {
                 const clientId = conn.client?._id || conn.client;
-                await fetch(`http://localhost:5000/api/projects/${projectId}/share`, {
+               await fetch(`http://localhost:5000/api/projects/${projectId}/share`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                   body: JSON.stringify({ mode: 'connection', clientId, connectionId: ctx.connectionId, message: 'Your architect has started working on your project!' })
                 });
+
+                // ── NEW: if this is an additional project, link it so the stepper shows on the card ──
+                if (ctx.additionalProjectId) {
+                  await fetch(`http://localhost:5000/api/connections/${ctx.connectionId}/additional-projects/${ctx.additionalProjectId}/link`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ architectProjectId: projectId })
+                  });
+                }
               }
             }
           } catch(shareErr) { console.warn('Auto-share on first save failed:', shareErr); }

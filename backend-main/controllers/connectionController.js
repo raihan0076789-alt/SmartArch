@@ -123,8 +123,26 @@ exports.getMyConnections = async (req, res) => {
                     }
 
                     obj.architectProject = (share && share.project) ? share.project : null;
+
+                    // Enrich each additional project with its linked architect design project
+                    if (conn.additionalProjects && conn.additionalProjects.length) {
+                        obj.additionalProjects = await Promise.all(conn.additionalProjects.map(async ap => {
+                            const apObj = Object.assign({}, ap.toObject ? ap.toObject() : ap);
+                            if (ap.architectProjectId) {
+                                const apProj = await Project.findById(ap.architectProjectId)
+                                    .select('name type status statusHistory').lean();
+                                apObj.architectProject = apProj || null;
+                            } else {
+                                apObj.architectProject = null;
+                            }
+                            return apObj;
+                        }));
+                    } else {
+                        obj.additionalProjects = [];
+                    }
                 } else {
-                    obj.architectProject = null;
+                    obj.architectProject   = null;
+                    obj.additionalProjects = [];
                 }
                 return obj;
             }));
@@ -135,7 +153,6 @@ exports.getMyConnections = async (req, res) => {
         const enrichedClient = await Promise.all(conns.map(async (conn) => {
             const obj = conn.toObject();
             if (conn.project) {
-                const Project = require('../models/Project');
                 const proj = await Project.findById(conn.project).select('name status type').lean();
                 obj.project = proj || obj.project;
             }
@@ -359,6 +376,77 @@ exports.getProjectBrief = async (req, res) => {
     }
 };
 
+// ─── GET /api/connections/:id/additional-projects/:projectId ──────────────────
+// Architect fetches the full brief for a specific additional project on a connection.
+exports.getAdditionalProjectBrief = async (req, res) => {
+    try {
+        const conn = await Connection.findById(req.params.id)
+            .select('architect additionalProjects')
+            .lean();
+
+        if (!conn) return res.status(404).json({ success: false, message: 'Connection not found.' });
+        if (String(conn.architect) !== String(req.user._id)) {
+            return res.status(403).json({ success: false, message: 'Not authorized.' });
+        }
+
+        const entry = conn.additionalProjects.find(
+            p => String(p.projectId) === String(req.params.projectId)
+        );
+        if (!entry) return res.status(404).json({ success: false, message: 'Project not found on this connection.' });
+
+        const ClientProject = require('../models/ClientProject');
+        const brief = await ClientProject.findById(entry.projectId).select('-__v -linkedConnection');
+        if (!brief) return res.status(404).json({ success: false, message: 'Project details not found.' });
+
+        res.json({ success: true, source: 'client', data: brief });
+    } catch (err) {
+        console.error('getAdditionalProjectBrief error:', err);
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+};
+
+// ─── POST /api/connections/:id/assign-project ─────────────────────────────────
+// Client assigns an additional project to an already-accepted connection.
+exports.assignProject = async (req, res) => {
+    try {
+        const { projectId } = req.body;
+        if (!projectId) {
+            return res.status(400).json({ success: false, message: 'projectId is required.' });
+        }
+
+        const conn = await Connection.findById(req.params.id);
+        if (!conn) return res.status(404).json({ success: false, message: 'Connection not found.' });
+        if (String(conn.client) !== String(req.user._id)) {
+            return res.status(403).json({ success: false, message: 'Not authorized.' });
+        }
+        if (conn.status !== 'accepted') {
+            return res.status(400).json({ success: false, message: 'Connection is not active.' });
+        }
+
+        // Resolve project name from ClientProject
+        const ClientProject = require('../models/ClientProject');
+        const proj = await ClientProject.findOne({ _id: projectId, client: req.user._id }).select('title');
+        if (!proj) return res.status(404).json({ success: false, message: 'Project not found.' });
+
+        // Avoid duplicate assignments
+        const alreadyAssigned = conn.additionalProjects.some(
+            p => String(p.projectId) === String(projectId)
+        );
+        if (alreadyAssigned) {
+            return res.json({ success: true, message: 'Project already assigned.' });
+        }
+
+        conn.additionalProjects.push({ projectId, projectName: proj.title });
+        conn.unreadByArchitect += 1;
+        await conn.save();
+
+        res.status(201).json({ success: true, message: 'Project assigned to connection.' });
+    } catch (err) {
+        console.error('assignProject error:', err);
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+};
+
 // ─── DELETE /api/connections/:id/rejected ─────────────────────────────────────
 // Client deletes their own rejected connection card to clean up the UI.
 exports.deleteRejected = async (req, res) => {
@@ -387,6 +475,8 @@ exports.deleteRejected = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error.' });
     }
 };
+
+// ─── DELETE /api/connections/:id ──────────────────────────────────────────────
 // Client cancels their own pending connection request.
 // Only the client who sent the request may cancel it, and only while it is still pending.
 exports.cancelRequest = async (req, res) => {
@@ -417,6 +507,36 @@ exports.cancelRequest = async (req, res) => {
         res.json({ success: true, message: 'Connection request cancelled successfully.' });
     } catch (err) {
         console.error('cancelRequest error:', err);
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+};
+
+// ─── PATCH /api/connections/:id/additional-projects/:projectId/link ───────────
+// Architect links their design project to an additional project request.
+exports.linkAdditionalProject = async (req, res) => {
+    try {
+        const { architectProjectId } = req.body;
+        if (!architectProjectId) {
+            return res.status(400).json({ success: false, message: 'architectProjectId is required.' });
+        }
+
+        const conn = await Connection.findOne({ _id: req.params.id, architect: req.user._id });
+        if (!conn) return res.status(404).json({ success: false, message: 'Connection not found.' });
+        if (conn.status !== 'accepted') {
+            return res.status(400).json({ success: false, message: 'Connection is not active.' });
+        }
+
+        const ap = conn.additionalProjects.find(
+            p => String(p.projectId) === String(req.params.projectId)
+        );
+        if (!ap) return res.status(404).json({ success: false, message: 'Additional project not found on this connection.' });
+
+        ap.architectProjectId = architectProjectId;
+        await conn.save();
+
+        res.json({ success: true, message: 'Architect project linked to additional project.' });
+    } catch (err) {
+        console.error('linkAdditionalProject error:', err);
         res.status(500).json({ success: false, message: 'Server error.' });
     }
 };

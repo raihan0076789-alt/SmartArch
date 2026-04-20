@@ -1093,6 +1093,16 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
                 });
                 var d = await r.json();
                 if (!d.success) throw new Error(d.message);
+
+                // Also formally assign the project to the connection
+                if (projId) {
+                    await fetch(CLIENT_API + '/connections/' + connectionId + '/assign-project', {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: JSON.stringify({ projectId: projId })
+                    }).catch(() => {}); // non-blocking — chat message already sent
+                }
+
                 document.getElementById('connectBackdrop').classList.remove('open');
                 document.body.style.overflow = '';
                 showToast('Project request sent to ' + archName + ' via chat!', 'success');
@@ -1361,7 +1371,7 @@ function _isCompletedWithArchitect(conn) {
         var shareArchId = s.sharedBy && (s.sharedBy._id || s.sharedBy.id || s.sharedBy);
         if (String(shareArchId) !== archId) return false;
         var proj = s.project;
-        return proj && typeof proj === 'object' && proj.status === 'completed';
+        return proj && typeof proj === 'object' && (proj.status === 'approved' || proj.status === 'completed');
     });
 }
 

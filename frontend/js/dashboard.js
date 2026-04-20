@@ -2266,12 +2266,23 @@ function renderArchConnections(conns) {
     const rejected = conns.filter(c => c.status === 'rejected');
     const ordered  = [...pending, ...accepted, ...rejected];
 
+  // Expand connections: primary card + one card per additional project
+    const allCards = [];
+    ordered.forEach(c => {
+        allCards.push(archConnCardHtml(c, null));   // primary card
+        if (c.status === 'accepted' && c.additionalProjects && c.additionalProjects.length) {
+            c.additionalProjects.forEach(ap => {
+                allCards.push(archConnCardHtml(c, ap));  // additional project card
+            });
+        }
+    });
+
     body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.25rem;">
-        ${ordered.map(c => archConnCardHtml(c)).join('')}
+        ${allCards.join('')}
     </div>`;
 }
 
-function archConnCardHtml(c) {
+function archConnCardHtml(c, additionalProject) {
     const client = c.client || {};
     const avatar = client.avatar ||
         `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || 'C')}&background=00d4c8&color=060a12&bold=true`;
@@ -2286,20 +2297,30 @@ function archConnCardHtml(c) {
     const statusChip = `<span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:2px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:0.3px;background:${ss.bg};color:${ss.color};border:1px solid ${ss.border}">${ss.label}</span>`;
 
     // ── Project banner (thumbnail strip matching .project-thumbnail style) ────
+   // Resolve display name & banner color based on whether this is an additional project card
+    const isAdditional   = !!additionalProject;
+    const displayName    = isAdditional ? additionalProject.projectName : c.projectName;
+    const bannerGradient = isAdditional
+        ? 'linear-gradient(135deg,rgba(0,212,200,0.13) 0%,rgba(139,92,246,0.08) 100%)'
+        : 'linear-gradient(135deg,rgba(139,92,246,0.13) 0%,rgba(0,212,200,0.08) 100%)';
+    const folderColor    = isAdditional ? '#00d4c8' : '#8b5cf6';
+    const folderBorder   = isAdditional ? 'rgba(0,212,200,0.22)' : 'rgba(139,92,246,0.22)';
+    const folderBg       = isAdditional ? 'rgba(0,212,200,0.12)' : 'rgba(139,92,246,0.12)';
+
     const proj = c.project || {};
-    const projTypeLabel = proj.type
+    const projTypeLabel = isAdditional ? 'Additional Project' : (proj.type
         ? proj.type.charAt(0).toUpperCase() + proj.type.slice(1)
-        : (c.projectName ? 'Project' : '');
-    const projectBanner = c.projectName ? `
-        <div style="background:linear-gradient(135deg,rgba(139,92,246,0.13) 0%,rgba(0,212,200,0.08) 100%);border-bottom:1px solid rgba(255,255,255,0.07);padding:0.75rem 1.1rem;display:flex;align-items:center;gap:0.6rem;">
-            <div style="width:32px;height:32px;border-radius:8px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fas fa-folder-open" style="color:#8b5cf6;font-size:0.85rem;"></i>
+        : (c.projectName ? 'Project' : ''));
+    const projectBanner = displayName ? `
+        <div style="background:${bannerGradient};border-bottom:1px solid rgba(255,255,255,0.07);padding:0.75rem 1.1rem;display:flex;align-items:center;gap:0.6rem;">
+            <div style="width:32px;height:32px;border-radius:8px;background:${folderBg};border:1px solid ${folderBorder};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-folder-open" style="color:${folderColor};font-size:0.85rem;"></i>
             </div>
             <div style="min-width:0;">
-                <div style="font-size:0.82rem;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.projectName)}</div>
+                <div style="font-size:0.82rem;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(displayName)}</div>
                 ${projTypeLabel ? `<div style="font-size:0.7rem;color:#64748b;text-transform:capitalize;">${escHtml(projTypeLabel)}</div>` : ''}
             </div>
-            <i class="fas fa-chevron-right" style="margin-left:auto;color:#475569;font-size:0.7rem;flex-shrink:0;"></i>
+            ${isAdditional ? `<span style="margin-left:auto;font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(0,212,200,0.1);color:#00d4c8;border:1px solid rgba(0,212,200,0.2);white-space:nowrap;">+ Additional</span>` : `<i class="fas fa-chevron-right" style="margin-left:auto;color:#475569;font-size:0.7rem;flex-shrink:0;"></i>`}
         </div>` : '';
 
     // ── Description (intro message, 2-line clamp matching .project-info > p) ──
@@ -2321,7 +2342,7 @@ function archConnCardHtml(c) {
         : '';
 
     return `
-    <div onclick="openConnDetailModal('${c._id}')"
+    <div onclick="${isAdditional ? `openAdditionalProjectModal('${c._id}','${additionalProject.projectId}')` : `openConnDetailModal('${c._id}')`}"
         style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:var(--r-lg,14px);overflow:hidden;transition:all 0.25s cubic-bezier(0.22,1,0.36,1);cursor:pointer;position:relative;"
         onmouseover="this.style.transform='translateY(-4px)';this.style.borderColor='rgba(139,92,246,0.28)';this.style.background='rgba(139,92,246,0.04)';this.style.boxShadow='0 20px 60px rgba(0,0,0,0.4),0 0 30px rgba(139,92,246,0.06)';"
         onmouseout="this.style.transform='';this.style.borderColor='rgba(255,255,255,0.07)';this.style.background='rgba(255,255,255,0.04)';this.style.boxShadow='';">
@@ -2344,7 +2365,9 @@ function archConnCardHtml(c) {
 
             ${descHtml}
 
-            ${c.status === 'accepted' ? connStatusStepperHtml(c) : ''}
+           ${c.status === 'accepted' && !isAdditional ? connStatusStepperHtml(c) : ''}
+            ${c.status === 'accepted' && isAdditional ? additionalProjectStepperHtml(c, additionalProject) : ''}
+            
 
             <!-- Click hint + action buttons row -->
             <div style="display:flex;align-items:center;gap:0.6rem;padding-top:0.875rem;border-top:1px solid rgba(255,255,255,0.07);">
@@ -2464,6 +2487,98 @@ function connStatusStepperHtml(c) {
     </div>`;
 }
 
+// ── Status stepper for Additional Project cards ────────────────────────────────
+function additionalProjectStepperHtml(c, ap) {
+    // Check if architect has already shared a project for this additional request
+    // We store it in ap.architectProject once the architect links one
+    const proj = ap.architectProject || null;
+
+    if (!proj || !proj._id) {
+        // No workspace project linked yet — show prompt to start one
+        const clientName   = escHtml((c.client || {}).name || '');
+        const assignedDate = ap.assignedAt
+            ? new Date(ap.assignedAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+            : '';
+        return `
+        <div style="margin-top:0.75rem;padding:0.6rem 0.9rem;background:rgba(0,212,200,0.04);border:1px dashed rgba(0,212,200,0.18);border-radius:10px;" onclick="event.stopPropagation()">
+            <div style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;display:flex;align-items:center;gap:0.35rem;">
+                <i class="fas fa-tasks" style="font-size:0.55rem;color:#00d4c8;"></i> Project Progress
+            </div>
+            <div style="font-size:0.75rem;color:#64748b;margin-bottom:0.5rem;">
+                <i class="fas fa-info-circle" style="font-size:0.65rem;color:rgba(0,212,200,0.5);margin-right:0.3rem;"></i>
+                New request${assignedDate ? ' · received ' + assignedDate : ''} — no design started yet
+            </div>
+            <button onclick="event.stopPropagation();openWorkspaceForAdditional('${c._id}','${clientName}','${escHtml(ap.projectName)}','${ap.projectId}')"
+                style="width:100%;padding:0.45rem 0.75rem;background:linear-gradient(135deg,rgba(0,212,200,0.15),rgba(139,92,246,0.1));color:#00d4c8;font-weight:700;font-size:0.72rem;border:1px solid rgba(0,212,200,0.25);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem;transition:all 0.2s;"
+                onmouseover="this.style.background='linear-gradient(135deg,rgba(0,212,200,0.25),rgba(139,92,246,0.15))';"
+                onmouseout="this.style.background='linear-gradient(135deg,rgba(0,212,200,0.15),rgba(139,92,246,0.1))';">
+                <i class="fas fa-drafting-compass"></i> Start in Workspace
+            </button>
+        </div>`;
+    }
+
+    // Architect has a linked project — show full stepper (reuse same logic as primary)
+    const STEPS = [
+        { key: 'draft',       label: 'Draft',       icon: 'fa-pencil-alt' },
+        { key: 'in_progress', label: 'In Progress',  icon: 'fa-tools'      },
+        { key: 'review',      label: 'Review',       icon: 'fa-search'     },
+        { key: 'approved',    label: 'Complete',     icon: 'fa-check-circle'}
+    ];
+    const ORDER  = STEPS.map(s => s.key);
+    const curIdx = ORDER.indexOf(proj.status);
+    const nextStep = (curIdx < ORDER.length - 1 && STEPS[curIdx + 1].key !== 'approved')
+        ? STEPS[curIdx + 1] : null;
+
+    const histMap = {};
+    if (Array.isArray(proj.statusHistory)) {
+        proj.statusHistory.forEach(h => { histMap[h.status] = h.changedAt; });
+    }
+
+    const fmtDate = iso => {
+        if (!iso) return null;
+        const d = new Date(iso);
+        return d.toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    };
+
+    const stepsHtml = STEPS.map((step, i) => {
+        const done   = i < curIdx;
+        const active = i === curIdx;
+        const cls    = done ? 'ps-step done' : active ? 'ps-step active' : 'ps-step';
+        const ts     = fmtDate(histMap[step.key]);
+        const tsHtml = ts
+            ? `<div style="font-size:0.52rem;color:${done ? '#10b981' : active ? '#00d4c8' : '#334155'};margin-top:2px;white-space:nowrap;max-width:70px;overflow:hidden;text-overflow:ellipsis;" title="${ts}">${ts}</div>`
+            : '';
+        return `<div class="${cls}">
+            <div class="ps-dot"><i class="fas ${step.icon}"></i></div>
+            <div class="ps-label">${step.label}</div>
+            ${tsHtml}
+        </div>`;
+    }).join('<div class="ps-line"></div>');
+
+    const atReview   = proj.status === 'review';
+    const atApproved = proj.status === 'approved';
+
+    const advBtn = atApproved
+        ? `<span class="ps-complete-badge"><i class="fas fa-check-circle"></i> Complete</span>`
+        : atReview
+        ? `<span style="font-size:0.72rem;color:#a78bfa;display:flex;align-items:center;gap:0.35rem;">
+               <i class="fas fa-hourglass-half" style="font-size:0.65rem;"></i> Awaiting client review
+           </span>`
+        : nextStep
+        ? `<button class="ps-advance-btn" onclick="event.stopPropagation();advanceConnProjectStatus('${c._id}','${proj._id}','${nextStep.key}','${nextStep.label}')">
+               <i class="fas fa-arrow-right"></i> Mark as ${nextStep.label}
+           </button>`
+        : `<span class="ps-complete-badge"><i class="fas fa-check-circle"></i> Complete</span>`;
+
+    return `<div class="ps-stepper" onclick="event.stopPropagation()" style="margin-top:0.75rem;">
+        <div style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
+            <i class="fas fa-tasks" style="font-size:0.55rem;"></i> Project Progress
+        </div>
+        <div class="ps-steps">${stepsHtml}</div>
+        <div class="ps-action">${advBtn}</div>
+    </div>`;
+}
+
 async function advanceConnProjectStatus(connId, projectId, newStatus, label) {
     try {
         const res = await api.updateProjectStatus(projectId, newStatus);
@@ -2472,12 +2587,22 @@ async function advanceConnProjectStatus(connId, projectId, newStatus, label) {
         // Update the cached connection's project status + history
         const cache = window._archConnectionsCache || [];
         const conn  = cache.find(x => String(x._id) === String(connId));
-        if (conn && conn.architectProject) {
-            conn.architectProject.status = newStatus;
-            if (!conn.architectProject.statusHistory) conn.architectProject.statusHistory = [];
-            conn.architectProject.statusHistory.push({ status: newStatus, changedAt: new Date().toISOString() });
+        if (conn) {
+            // Update primary project if it matches
+            if (conn.architectProject && String(conn.architectProject._id) === String(projectId)) {
+                conn.architectProject.status = newStatus;
+                if (!conn.architectProject.statusHistory) conn.architectProject.statusHistory = [];
+                conn.architectProject.statusHistory.push({ status: newStatus, changedAt: new Date().toISOString() });
+            }
+            // Also check additional projects
+            (conn.additionalProjects || []).forEach(ap => {
+                if (ap.architectProject && String(ap.architectProject._id) === String(projectId)) {
+                    ap.architectProject.status = newStatus;
+                    if (!ap.architectProject.statusHistory) ap.architectProject.statusHistory = [];
+                    ap.architectProject.statusHistory.push({ status: newStatus, changedAt: new Date().toISOString() });
+                }
+            });
         }
-
         renderArchConnections(cache);
 
         let msg = `Project marked as "${label}" ✓`;
@@ -2524,10 +2649,25 @@ async function openConnDetailModal(connId) {
         } catch (e) { /* render without brief */ }
     }
 
+    // Fetch additional project briefs in parallel
+    let additionalBriefs = [];
+    if (c.additionalProjects && c.additionalProjects.length > 0) {
+        additionalBriefs = await Promise.all(
+            c.additionalProjects.map(async p => {
+                try {
+                    const r = await fetch(`${CONN_API}/${connId}/additional-projects/${p.projectId}`, { headers: connHeaders() });
+                    const d = await r.json();
+                    return d.success ? { meta: p, brief: d.data } : { meta: p, brief: null };
+                } catch { return { meta: p, brief: null }; }
+            })
+        );
+    }
+
     // ── Re-render with full data ──────────────────────────────────────────────
     cover.innerHTML  = _connPanelCover(c, client, avatar, brief);
-    scroll.innerHTML = _briefBody(c, client, avatar, brief);
+    scroll.innerHTML = _briefBody(c, client, avatar, brief) + _additionalProjectsBody(additionalBriefs);
     footer.innerHTML = _connPanelFooter(c, client, avatar);
+
 }
 
 // ── Sub-renderers ─────────────────────────────────────────────────────────────
@@ -2628,6 +2768,25 @@ function _connPanelFooter(c, client, avatar) {
             </div>`;
     }
     return `<div style="text-align:center;font-size:0.82rem;color:#f43f5e;padding:0.25rem 0;"><i class="fas fa-times-circle" style="margin-right:0.4rem;"></i>This request was declined</div>`;
+}
+
+function _additionalPanelFooter(c, client, avatar, ap) {
+    const clientName = escHtml(client.name || '');
+    return `
+        <div style="display:flex;gap:0.75rem;">
+            <button onclick="openArchChatModal('${c._id}','${clientName}','${avatar}');closeConnDetailModal();"
+                style="flex:1;padding:0.75rem;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.5rem;transition:all 0.2s;"
+                onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 20px rgba(16,185,129,0.3)';"
+                onmouseout="this.style.transform='';this.style.boxShadow='';">
+                <i class="fas fa-comments"></i> Chat
+            </button>
+            <button onclick="openWorkspaceForAdditional('${c._id}','${clientName}','${escHtml(ap.projectName)}','${ap.projectId}')"
+                style="flex:1;padding:0.75rem;background:rgba(0,212,200,0.1);color:#00d4c8;font-weight:700;font-size:0.875rem;border:1px solid rgba(0,212,200,0.25);border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.5rem;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(0,212,200,0.2)';this.style.color='#67e8f9';"
+                onmouseout="this.style.background='rgba(0,212,200,0.1)';this.style.color='#00d4c8';">
+                <i class="fas fa-drafting-compass"></i> Open Workspace
+            </button>
+        </div>`;
 }
 
 function _briefBody(c, client, avatar, brief) {
@@ -2776,6 +2935,64 @@ function _briefBody(c, client, avatar, brief) {
     return html;
 }
 
+function _additionalProjectsBody(additionalBriefs) {
+    if (!additionalBriefs || !additionalBriefs.length) return '';
+
+    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    const trow = (label, value) => (value !== null && value !== undefined && value !== '')
+        ? `<div style="display:grid;grid-template-columns:130px 1fr;align-items:baseline;padding:0.7rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+               <span style="font-size:0.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;">${label}</span>
+               <span style="font-size:0.875rem;color:#e2e8f0;font-weight:500;">${value}</span>
+           </div>`
+        : '';
+
+    const fmtBudget = b => {
+        if (!b || (b.min == null && b.max == null)) return null;
+        const sym = b.currency === 'INR' ? '₹' : '$';
+        const fmt = n => n >= 10000000 ? sym+(n/10000000).toFixed(1)+'Cr' : n >= 100000 ? sym+(n/100000).toFixed(1)+'L' : sym+n.toLocaleString('en-IN');
+        if (b.min != null && b.max != null) return `${fmt(b.min)} – ${fmt(b.max)}`;
+        return b.min != null ? `From ${fmt(b.min)}` : `Up to ${fmt(b.max)}`;
+    };
+
+    return additionalBriefs.map(({ meta, brief }, idx) => {
+        const assignedDate = meta.assignedAt
+            ? new Date(meta.assignedAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+            : '';
+
+        let html = `
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:2px dashed rgba(0,212,200,0.15);">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+                <div style="width:26px;height:26px;border-radius:7px;background:rgba(0,212,200,0.1);border:1px solid rgba(0,212,200,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-plus" style="color:#00d4c8;font-size:0.65rem;"></i>
+                </div>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;color:#f1f5f9;">${escHtml(meta.projectName || 'Additional Project')}</div>
+                    ${assignedDate ? `<div style="font-size:0.65rem;color:#475569;">Assigned ${assignedDate}</div>` : ''}
+                </div>
+            </div>`;
+
+        if (!brief) {
+            html += `<div style="padding:0.6rem 0.875rem;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.07);border-radius:10px;font-size:0.78rem;color:#475569;text-align:center;">
+                <i class="fas fa-folder-open" style="margin-right:0.4rem;"></i>Brief details not available
+            </div>`;
+        } else {
+            html += `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,212,200,0.1);border-radius:12px;padding:0 0.875rem;">`;
+            html += trow('Type',     cap(brief.projectType));
+            html += trow('Budget',   fmtBudget(brief.budget));
+            html += trow('Style',    cap(brief.style));
+            html += trow('Timeline', brief.timeline ? cap(brief.timeline.replace(/-/g,' ')) : null);
+            if (brief.description) {
+                html += `</div><div style="margin-top:0.6rem;padding:0.75rem 1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-left:3px solid rgba(0,212,200,0.35);border-radius:0 10px 10px 0;font-size:0.82rem;color:#94a3b8;line-height:1.6;font-style:italic;">${escHtml(brief.description)}</div>`;
+            } else {
+                html += `</div>`;
+            }
+        }
+
+        html += `</div>`;
+        return html;
+    }).join('');
+}
+
 // ── Skeleton loader rows ──────────────────────────────────────────────────────
 function _skeletonRows(n) {
     const pulse = `animation:connSkeletonPulse 1.4s ease-in-out infinite;`;
@@ -2824,6 +3041,71 @@ function openWorkspaceForClient(connId, clientName, projectName) {
     }
 
     window.location.href = `architect.html?${params.toString()}`;
+}
+
+function openWorkspaceForAdditional(connId, clientName, projectName, projectId) {
+    closeConnDetailModal();
+
+    // Check if this additional project already has a linked architect project
+    const cached = window._archConnectionsCache || [];
+    const conn   = cached.find(x => String(x._id) === String(connId));
+    const ap     = conn && (conn.additionalProjects || []).find(p => String(p.projectId) === String(projectId));
+    const existingArchProjId = ap && ap.architectProjectId ? ap.architectProjectId : null;
+
+    const params = new URLSearchParams();
+    params.set('connectionId',        connId);
+    params.set('clientName',          clientName);
+    params.set('additionalProjectId', projectId);  // tells architect.js this is an additional project
+
+    if (existingArchProjId) {
+        // Open the existing project directly — same as primary flow
+        params.set('id',                existingArchProjId);
+        params.set('clientProjectName', projectName);
+    } else {
+        // Blank workspace — pre-fill title
+        params.set('projectName', projectName);
+    }
+
+    window.location.href = `architect.html?${params.toString()}`;
+}
+
+async function openAdditionalProjectModal(connId, projectId) {
+    const backdrop = document.getElementById('connDetailBackdrop');
+    const cover    = document.getElementById('connDetailCover');
+    const scroll   = document.getElementById('connDetailScroll');
+    const footer   = document.getElementById('connDetailFooter');
+    if (!backdrop || !cover || !scroll || !footer) return;
+
+    const cached = window._archConnectionsCache || [];
+    const c = cached.find(x => String(x._id) === String(connId));
+    if (!c) return;
+
+    const client = c.client || {};
+    const avatar = client.avatar ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || 'C')}&background=00d4c8&color=060a12&bold=true`;
+    const ap = (c.additionalProjects || []).find(p => String(p.projectId) === String(projectId));
+    if (!ap) return;
+
+    // Show skeleton
+    cover.innerHTML  = _connPanelCover(c, client, avatar, null);
+    scroll.innerHTML = _skeletonRows(6);
+    footer.innerHTML = '';
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    // Fetch the additional project brief
+    let brief = null;
+    try {
+        const r = await fetch(`${CONN_API}/${connId}/additional-projects/${projectId}`, { headers: connHeaders() });
+        const d = await r.json();
+        if (d.success) brief = d.data;
+    } catch (e) {}
+
+    // Render with additional project context
+    const fakeConn = Object.assign({}, c, { projectName: ap.projectName });
+    cover.innerHTML  = _connPanelCover(fakeConn, client, avatar, brief);
+    scroll.innerHTML = _briefBody(fakeConn, client, avatar, brief);
+    footer.innerHTML = _additionalPanelFooter(c, client, avatar, ap);
 }
 
 function closeConnDetailModal() {
@@ -3119,6 +3401,8 @@ window.openChatLightbox      = openChatLightbox;
 window.openConnDetailModal      = openConnDetailModal;
 window.closeConnDetailModal     = closeConnDetailModal;
 window.openWorkspaceForClient   = openWorkspaceForClient;
+window.openWorkspaceForAdditional = openWorkspaceForAdditional;
+window.openAdditionalProjectModal = openAdditionalProjectModal;
 
 // ── Close side panel on Escape ────────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {

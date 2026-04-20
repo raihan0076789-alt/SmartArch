@@ -11,6 +11,13 @@ const messageSchema = new mongoose.Schema({
     readAt:    { type: Date, default: null }
 }, { timestamps: true });
 
+const additionalProjectSchema = new mongoose.Schema({
+    projectId:          { type: mongoose.Schema.Types.ObjectId, ref: 'ClientProject', required: true },
+    projectName:        { type: String, default: '' },             // snapshot name for display
+    assignedAt:         { type: Date, default: Date.now },
+    architectProjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null }  // linked architect design project
+}, { _id: false });
+
 const connectionSchema = new mongoose.Schema({
     client: {
         type: mongoose.Schema.Types.ObjectId,
@@ -22,13 +29,16 @@ const connectionSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    // Optional project context
+    // Optional project context (first/primary project)
     project: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Project',
         default: null
     },
     projectName: { type: String, default: '' },   // snapshot name for display
+
+    // Additional projects assigned after connection is accepted
+    additionalProjects: [additionalProjectSchema],
 
     // The initial message the client sends when connecting
     introMessage: { type: String, trim: true, maxlength: 1000, default: '' },

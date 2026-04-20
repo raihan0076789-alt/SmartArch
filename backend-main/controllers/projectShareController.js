@@ -159,7 +159,7 @@ exports.getMySharedProjects = async (req, res) => {
             isRevoked:  false,
             $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }]
         })
-        .populate('project',  'name type status metadata floors totalWidth totalDepth style materials specifications thumbnail description tags')
+        .populate('project',  'name type status metadata floors totalWidth totalDepth style materials specifications thumbnail description tags createdAt updatedAt')
         .populate('sharedBy', 'name email avatar specialization rating')
         .sort('-createdAt');
 
