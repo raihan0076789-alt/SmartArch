@@ -63,6 +63,7 @@
         staircase: { hex: 0xff9632, css: '#ff9632', floor: 0xc8a870 },
         other:     { hex: 0xaaaaaa, css: '#aaaaaa', floor: 0x999999 },
         balcony:   { hex: 0x64c8ff, css: '#64c8ff', floor: 0xb0c8d8 },
+        hallway:   { hex: 0xc8a96e, css: '#c8a96e', floor: 0xc8a07a },
     };
     const WALL_H = 2.7;
     const WT = 0.14; // wall thickness
@@ -763,6 +764,7 @@
             staircase: furnishStaircase,
             garage:    furnishGarage,
             balcony:   furnishBalcony,
+            hallway:   furnishHallway,
         }[room.type];
 
         if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
@@ -1383,14 +1385,147 @@
             });
         }
     }
+        
+   function furnishHallway(cx, cz, fl, rw, rd) {
+        const isLong = rw >= rd;
 
-    function furnishDefault(cx, cz, fl, rw, rd) {
-        // Generic: a table and two chairs
-        box(Math.min(rw * 0.4, 1.2), 0.05, Math.min(rd * 0.35, 0.7), 0x7a5535, cx, fl + 0.74, cz, 0.6, 'furniture');
-        [[-0.7, 0],[0.7, 0]].forEach(([dx]) =>
-            box(0.4, 0.05, 0.38, 0x5c3d1e, cx + dx, fl + 0.44, cz + 0.52, 0.8, 'furniture'));
+        // ── Wooden floor overlay ───────────────────────────────────────
+        box(rw - 0.05, 0.018, rd - 0.05, 0xc8a07a, cx, fl + 0.009, cz, 0.85, 'furniture');
+        const plankDir = isLong ? rw : rd;
+        const plankCount = Math.floor(plankDir / 0.18);
+        for (let i = 1; i < plankCount; i++) {
+            const t = -plankDir / 2 + i * 0.18;
+            if (isLong) box(0.006, 0.002, rd - 0.1, 0x9a6a3a, cx + t, fl + 0.02, cz, 0.4, 'furniture');
+            else        box(rw - 0.1, 0.002, 0.006, 0x9a6a3a, cx, fl + 0.02, cz + t, 0.4, 'furniture');
+        }
+
+        // ── Skirting boards (kept fully inside boundary) ───────────────
+        const skH = 0.12, skD = 0.025, skCol = 0xf5f0e8;
+        if (isLong) {
+            box(rw - 0.1, skH, skD, skCol, cx, fl + skH/2, cz - rd/2 + skD/2 + 0.02, 0.9, 'furniture');
+            box(rw - 0.1, skH, skD, skCol, cx, fl + skH/2, cz + rd/2 - skD/2 - 0.02, 0.9, 'furniture');
+        } else {
+            box(skD, skH, rd - 0.1, skCol, cx - rw/2 + skD/2 + 0.02, fl + skH/2, cz, 0.9, 'furniture');
+            box(skD, skH, rd - 0.1, skCol, cx + rw/2 - skD/2 - 0.02, fl + skH/2, cz, 0.9, 'furniture');
+        }
+
+        // ── Wall art frames (hung on wall, kept inside room) ───────────
+        // Art hangs flat against interior wall face — offset inward so frame stays inside
+        const artThick = 0.05;   // frame depth
+        const artH = 0.42, artWid = Math.min((isLong ? rw : rd) * 0.22, 0.55);
+        const artCount = Math.max(1, Math.floor((isLong ? rw : rd) / 2.4));
+        const artSpan  = (isLong ? rw : rd) * 0.72;
+        const wallY    = fl + 1.45;
+        const artColors = [0x8b5e3c, 0x4a7c6f, 0x7a5c8a, 0xb5844a, 0x4a6b8a];
+
+        for (let i = 0; i < artCount; i++) {
+            const t = artCount === 1 ? 0 : -artSpan/2 + i * (artSpan / Math.max(1, artCount - 1));
+
+            // Place art on the LONG walls, fully inside the room
+            if (isLong) {
+                // Art on front wall (z-negative side), fully inside
+                const artX = cx + t;
+                const artZ_front = cz - rd/2 + artThick/2 + 0.04; // inset from wall
+                const artZ_back  = cz + rd/2 - artThick/2 - 0.04;
+                // Canvas
+                box(artWid, artH, artThick, artColors[i % artColors.length], artX, wallY, artZ_front, 0.9, 'furniture');
+                // Frame border (slightly larger, same depth so stays inside)
+                box(artWid + 0.06, artH + 0.06, artThick + 0.01, 0x3a2510, artX, wallY, artZ_front, 0.85, 'furniture');
+                // Spotlight
+                const sl = new THREE.PointLight(0xffcc66, 0.8, 1.5);
+                sl.position.set(artX, wallY + 0.8, artZ_front + 0.3);
+                scene.add(sl);
+                // Also mirror on back wall if room is wide enough
+                if (rd > 2.5) {
+                    box(artWid, artH, artThick, artColors[(i+2) % artColors.length], artX, wallY, artZ_back, 0.9, 'furniture');
+                    box(artWid + 0.06, artH + 0.06, artThick + 0.01, 0x3a2510, artX, wallY, artZ_back, 0.85, 'furniture');
+                    const sl2 = new THREE.PointLight(0xffcc66, 0.8, 1.5);   
+                    sl2.position.set(artX, wallY + 0.8, artZ_back - 0.3);
+                    scene.add(sl2);
+                }
+            } else {
+                // Art on left/right walls for portrait-oriented hallway
+                const artZ = cz + t;
+                const artX_left  = cx - rw/2 + artThick/2 + 0.04;
+                const artX_right = cx + rw/2 - artThick/2 - 0.04;
+                box(artThick, artH, artWid, artColors[i % artColors.length], artX_left, wallY, artZ, 0.9, 'furniture');
+                box(artThick + 0.01, artH + 0.06, artWid + 0.06, 0x3a2510, artX_left, wallY, artZ, 0.85, 'furniture');
+                const sl = new THREE.PointLight(0xffcc66, 0.8, 1.5);
+                sl.position.set(artX_left + 0.3, wallY + 0.8, artZ);
+                scene.add(sl);
+                if (rw > 2.5) {
+                    box(artThick, artH, artWid, artColors[(i+2) % artColors.length], artX_right, wallY, artZ, 0.9, 'furniture');
+                    box(artThick + 0.01, artH + 0.06, artWid + 0.06, 0x3a2510, artX_right, wallY, artZ, 0.85, 'furniture');
+                    const sl2 = new THREE.PointLight(0xffcc66, 0.8, 1.5);
+                    sl2.position.set(artX_right - 0.3, wallY + 0.8, artZ);
+                    scene.add(sl2);
+                }
+            }
+        }
+
+        // ── Pendant ceiling light ──────────────────────────────────────
+        cyl(0.04, 0.05, 0.04, 8, 0x888888, cx, fl + 2.55, cz, 'furniture');
+        cyl(0.005, 0.005, 0.4,  8, 0x999999, cx, fl + 2.35, cz, 'furniture');
+        cyl(0.14, 0.06, 0.22, 12, 0xf5f0e8, cx, fl + 2.14, cz, 'furniture');
+        const pendLight = new THREE.PointLight(0xffe8b0, 1.1, Math.max(rw, rd) * 1.4);
+        pendLight.position.set(cx, fl + 2.0, cz);
+        scene.add(pendLight);
+
+        // ── Potted plants — clamped strictly inside boundary ───────────
+        const margin = 0.35; // keep plants this far from walls
+        const plantPositions = [];
+        if (isLong) {
+            const plantCount = Math.max(1, Math.floor(rw / 2.8));
+            const span = rw - margin * 2;
+            for (let i = 0; i < plantCount; i++) {
+                const px = cx - span/2 + (plantCount === 1 ? span/2 : i * span / (plantCount - 1));
+                const pzOff = Math.min(rd/2 - margin, rd * 0.32);
+                plantPositions.push([px, cz + pzOff]);
+                plantPositions.push([px, cz - pzOff]);
+            }
+        } else {
+            const plantCount = Math.max(1, Math.floor(rd / 2.8));
+            const span = rd - margin * 2;
+            for (let i = 0; i < plantCount; i++) {
+                const pz = cz - span/2 + (plantCount === 1 ? span/2 : i * span / (plantCount - 1));
+                const pxOff = Math.min(rw/2 - margin, rw * 0.32);
+                plantPositions.push([cx + pxOff, pz]);
+                plantPositions.push([cx - pxOff, pz]);
+            }
+        }
+        plantPositions.forEach(([px, pz]) => {
+            cyl(0.13, 0.16, 0.28, 10, 0x7a5030, px, fl + 0.14, pz, 'furniture');
+            cyl(0.12, 0.12, 0.04, 10, 0x3a2010, px, fl + 0.30, pz, 'furniture');
+            cyl(0.025, 0.025, 0.55, 6, 0x2d6e1b, px, fl + 0.58, pz, 'furniture');
+            cyl(0.22, 0.04, 0.28, 8, 0x2a7a1a, px, fl + 0.90, pz, 'furniture');
+            cyl(0.16, 0.03, 0.20, 8, 0x33922a, px, fl + 1.08, pz, 'furniture');
+        });
+
+        // ── Vertical garden (on short end wall, fully inside) ─────────
+        const vgThick = 0.09;
+        const vgW = isLong ? Math.min(rw * 0.45, 1.6) : vgThick;
+        const vgD = isLong ? vgThick : Math.min(rd * 0.45, 1.6);
+        const vgH = Math.min(1.8, Math.min(rw, rd) * 0.9);
+        // Place on the far short wall, inset so it stays inside
+        const vgX = isLong ? cx + rw/2 - vgThick/2 - 0.05 : cx;
+        const vgZ = isLong ? cz : cz + rd/2 - vgThick/2 - 0.05;
+        const vgY = fl + vgH / 2 + 0.15;
+        box(vgW + 0.06, vgH + 0.08, vgD + 0.06, 0x2a1a08, vgX, vgY, vgZ, 0.9, 'furniture');
+        const vgRows = Math.max(3, Math.floor(vgH / 0.28));
+        for (let r = 0; r < vgRows; r++) {
+            const gy = fl + 0.2 + r * (vgH / vgRows);
+            box(vgW, 0.22, vgD, r % 2 === 0 ? 0x2a7a1a : 0x1e5c14, vgX, gy, vgZ, 0.9, 'furniture');
+        }
+        [0.2, 0.55, 0.85].forEach((frac, fi) => {
+            const fy = fl + 0.2 + frac * vgH;
+            box(isLong ? vgW * 0.3 : vgThick + 0.02, 0.06, isLong ? vgThick + 0.02 : vgD * 0.3,
+                [0xffcc00, 0xff6644, 0xffffff][fi], vgX, fy, vgZ, 0.9, 'furniture');
+        });
+        const gardenLight = new THREE.PointLight(0x88cc66, 0.4, 1.8);
+        gardenLight.position.set(vgX, vgY + 0.5, vgZ);
+        scene.add(gardenLight);
     }
-
+    
     // ── Labels (canvas sprites) ──────────────────────────────
     function buildLabel(room, ox, oz, labelY) {
         const col = (TYPE_COLOR[room.type] || TYPE_COLOR.other).css;

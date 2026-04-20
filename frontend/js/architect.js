@@ -39,6 +39,7 @@
     garage:    { bg: 'rgba(130,140,155,0.3)',  border: '#828c9b', hex: 0x828c9b, dot: '#828c9b' },
     staircase: { bg: 'rgba(255,150,50,0.28)',  border: '#ff9632', hex: 0xff9632, dot: '#ff9632' },
     balcony:   { bg: 'rgba(100,200,255,0.25)', border: '#64c8ff', hex: 0x64c8ff, dot: '#64c8ff' },
+    hallway:   { bg: 'rgba(210,185,140,0.28)', border: '#c8a96e', hex: 0xc8a96e, dot: '#c8a96e' },
     other:     { bg: 'rgba(180,180,180,0.25)', border: '#aaa',    hex: 0xaaaaaa, dot: '#aaa'    }
   };
 
@@ -53,6 +54,7 @@
     garage:     900,
     staircase: 1400,
     balcony:   1200,
+    hallway:   1100,
     other:     1500
   };
   function getRoomRate(type){ return ROOM_RATES[type] || ROOM_RATES.other; }
@@ -508,7 +510,7 @@
 
   function addRoomOfType(type){
     const floor=projectData.floors[activeFloorIdx];
-    const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2}};
+   const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2},hallway:{w:6,d:2}};
     const dim=defaults[type]||{w:4,d:4};
     let x=0,z=0,placed=false,tries=0;
     while(tries++<80){
@@ -517,7 +519,7 @@
       if(!getOverlappingRooms(x,z,dim.w,dim.d,null).length){placed=true;break;}
     }
     if(!placed){showToast('⚠️ No free space on this floor — resize the canvas or remove a room','error');return;}
-    const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage',balcony:'Balcony'};
+    const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage',balcony:'Balcony',hallway:'Hallway'};
     const room={name:names[type]||type,type,width:dim.w,depth:dim.d,x,z,height:floor.height||2.7,doors:[],windows:[]};
     floor.rooms.push(room);pushUndoState();selectedRoom=room;renderRooms();showRoomProperties(room);updateInfoPanel();drawFloorPlan();markUnsaved();
   }
@@ -822,7 +824,7 @@
 
   function showRoomProperties(room){
     const container=el('roomProperties');if(!container)return;
-    const typeOpts=['living','bedroom','bathroom','kitchen','dining','office','garage','other'].map(t=>`<option value="${t}" ${room.type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
+    const typeOpts=['living','bedroom','bathroom','kitchen','dining','office','garage','hallway','other'].map(t=>`<option value="${t}" ${room.type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
     container.innerHTML=`
       <div class="form-group"><label>Name</label><input type="text" value="${room.name}" onchange="updateRoomProp('name',this.value)"></div>
       <div class="form-group"><label>Type</label><select onchange="updateRoomProp('type',this.value)">${typeOpts}</select></div>
@@ -1046,7 +1048,7 @@
   }
 
   // ── EDITABLE RATES ───────────────────────────────────────────────────────────
-  const DEFAULT_RATES={living:1800,bedroom:1600,bathroom:2800,kitchen:3200,dining:1700,office:1900,garage:900,staircase:1400,other:1500};
+  const DEFAULT_RATES={living:1800,bedroom:1600,bathroom:2800,kitchen:3200,dining:1700,office:1900,garage:900,staircase:1400,hallway:1100,other:1500};
 
   function toggleRatesPanel(){
     const panel=el('ratesPanel');
@@ -1060,8 +1062,8 @@
 
   function renderRatesGrid(){
     const grid=el('ratesGrid');if(!grid)return;
-    const dots={living:'#5b7cfa',bedroom:'#38ef7d',bathroom:'#56ccf2',kitchen:'#ffc107',dining:'#9c88ff',office:'#74b9ff',garage:'#828c9b',staircase:'#ff9632',other:'#aaa'};
-    const labels={living:'Living',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining',office:'Office',garage:'Garage',staircase:'Staircase',other:'Other'};
+    const dots={living:'#5b7cfa',bedroom:'#38ef7d',bathroom:'#56ccf2',kitchen:'#ffc107',dining:'#9c88ff',office:'#74b9ff',garage:'#828c9b',staircase:'#ff9632',hallway:'#c8a96e',other:'#aaa'};
+    const labels={living:'Living',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining',office:'Office',garage:'Garage',staircase:'Staircase',hallway:'Hallway',other:'Other'};
     grid.innerHTML=Object.keys(DEFAULT_RATES).map(type=>`
       <div class="rate-row">
         <span class="rate-label">
