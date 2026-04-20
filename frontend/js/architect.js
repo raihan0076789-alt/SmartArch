@@ -392,8 +392,11 @@
       if(resizeHandle.includes('w')){const nw=Math.max(minW,snap(orig.width-dx));x=snap(orig.x+(orig.width-nw));width=nw;}
       if(resizeHandle.includes('n')){const nd=Math.max(minD,snap(orig.depth-dy));z=snap(orig.z+(orig.depth-nd));depth=nd;}
       x=Math.max(0,Math.min(projectData.totalWidth-width,x));z=Math.max(0,Math.min(projectData.totalDepth-depth,z));
-      // Only apply resize if it doesn't overlap another room
-      if(!getOverlappingRooms(x,z,width,depth,selectedRoom).length){
+     // Only apply resize if it doesn't overlap another room (staircases can overlap non-staircases)
+      const resizeOk=selectedRoom.type==='staircase'
+        ?!getOverlappingRooms(x,z,width,depth,selectedRoom).filter(r=>r.type==='staircase').length
+        :!getOverlappingRooms(x,z,width,depth,selectedRoom).length;
+      if(resizeOk){
         selectedRoom.x=x;selectedRoom.z=z;selectedRoom.width=width;selectedRoom.depth=depth;
       }
       drawFloorPlan();showRoomProperties(selectedRoom);updateInfoPanel();markUnsaved();
@@ -403,7 +406,10 @@
       const nx=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,snap(selectedRoom.x+dx)));
       const nz=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,snap(selectedRoom.z+dz)));
       // Try full move first; if blocked try axis-by-axis (slide along walls)
-      if(!getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).length){
+    if(selectedRoom.type==='staircase'){
+        const stairConflicts=getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).filter(r=>r.type==='staircase');
+        if(!stairConflicts.length){selectedRoom.x=nx;selectedRoom.z=nz;}
+      } else if(!getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).length){
         selectedRoom.x=nx;selectedRoom.z=nz;
       } else if(!getOverlappingRooms(nx,selectedRoom.z,selectedRoom.width,selectedRoom.depth,selectedRoom).length){
         selectedRoom.x=nx; // slide horizontally only
@@ -487,10 +493,10 @@
     const stairWidth=1.5;
     const sx=snap(Math.max(0,Math.min(projectData.totalWidth-stairWidth,w.x-stairWidth/2)));
     const sz=snap(Math.max(0,Math.min(projectData.totalDepth-stairDepth,w.y-stairDepth/2)));
-    const conflicts=getOverlappingRooms(sx,sz,stairWidth,stairDepth,null);
+    const conflicts=getOverlappingRooms(sx,sz,stairWidth,stairDepth,null).filter(r=>r.type==='staircase');
     if(conflicts.length){
       flashOverlapRooms(conflicts);
-      showToast('⚠️ Staircase overlaps an existing room — choose a free area','error');
+      showToast('⚠️ Staircase overlaps another staircase — choose a free area','error');
       return;
     }
     const room={name:'Staircase',type:'staircase',width:stairWidth,depth:stairDepth,x:sx,z:sz,height:floorH,doors:[],windows:[]};
