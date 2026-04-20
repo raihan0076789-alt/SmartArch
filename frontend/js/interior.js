@@ -64,6 +64,7 @@
         other:     { hex: 0xaaaaaa, css: '#aaaaaa', floor: 0x999999 },
         balcony:   { hex: 0x64c8ff, css: '#64c8ff', floor: 0xb0c8d8 },
         hallway:   { hex: 0xc8a96e, css: '#c8a96e', floor: 0xc8a07a },
+        entrance:  { hex: 0xd4a96e, css: '#d4a96e', floor: 0xc8b090 },
     };
     const WALL_H = 2.7;
     const WT = 0.14; // wall thickness
@@ -297,10 +298,26 @@
                     mat(fc, floorRough, floorMetal), cx, baseY + 0.03, cz, 0, 0, 'walls');
             });
 
-            // Exterior walls — cut openings where balconies touch boundary
-            buildExteriorWalls(rooms, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI);
+            // Exterior walls — cut openings where balconies/entrance touch boundary
+            // For entrance rooms: snap a virtual copy to the nearest boundary so the
+            // wall cut aligns with the exterior wall, regardless of where user placed it.
+            const roomsForWalls = rooms.map(r => {
+                if (r.type !== 'entrance') return r;
+                const distFront = r.z;
+                const distBack  = HD - (r.z + r.depth);
+                const distLeft  = r.x;
+                const distRight = HW - (r.x + r.width);
+                const minDist   = Math.min(distFront, distBack, distLeft, distRight);
+                const snapped   = { ...r };
+                if      (minDist === distFront) snapped.z = 0;
+                else if (minDist === distBack)  snapped.z = HD - r.depth;
+                else if (minDist === distLeft)  snapped.x = 0;
+                else                            snapped.x = HW - r.width;
+                return snapped;
+            });
+            buildExteriorWalls(roomsForWalls, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI);
 
-            // Interior partition walls
+            // Interior partition walls (use original room positions)
             buildInteriorWalls(rooms, HW, HD, ox, oz, wy, floorH);
 
             // Ceiling slab for this floor (shown as thin layer, hidden toggle for interior view)
@@ -467,7 +484,7 @@
     // ── Exterior walls with balcony openings ─────────────────
     function buildExteriorWalls(rooms, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI) {
         const THRESH = 0.35;
-        const balconies = rooms.filter(r => r.type === 'balcony');
+        const balconies = rooms.filter(r => r.type === 'balcony' || r.type === 'entrance');
 
         // Helper: build wall segments along X axis skipping balcony spans
         function segsX(skipRanges) {
@@ -485,15 +502,30 @@
             return segs;
         }
 
-        // Collect balcony spans per boundary edge
+        // Collect balcony/entrance spans per boundary edge
         const skipFront = [], skipBack = [], skipLeft = [], skipRight = [];
         balconies.forEach(r => {
-            if (r.z < THRESH)               skipFront.push({from: ox + r.x,         to: ox + r.x + r.width});
-            if (r.z + r.depth > HD - THRESH) skipBack.push ({from: ox + r.x,         to: ox + r.x + r.width});
-            if (r.x < THRESH)               skipLeft.push ({from: oz + r.z,         to: oz + r.z + r.depth});
-            if (r.x + r.width > HW - THRESH) skipRight.push({from: oz + r.z,         to: oz + r.z + r.depth});
+            if (r.type === 'entrance') {
+                // Entrance: open the wall on whichever boundary side is nearest,
+                // regardless of how far the room was dragged from the edge.
+                const distFront = r.z;
+                const distBack  = HD - (r.z + r.depth);
+                const distLeft  = r.x;
+                const distRight = HW - (r.x + r.width);
+                const minDist   = Math.min(distFront, distBack, distLeft, distRight);
+                if (minDist === distFront)       skipFront.push({from: ox + r.x, to: ox + r.x + r.width});
+                else if (minDist === distBack)   skipBack.push ({from: ox + r.x, to: ox + r.x + r.width});
+                else if (minDist === distLeft)   skipLeft.push ({from: oz + r.z, to: oz + r.z + r.depth});
+                else                             skipRight.push({from: oz + r.z, to: oz + r.z + r.depth});
+            } else {
+                // Balcony: strict boundary-touch check
+                if (r.z < THRESH)               skipFront.push({from: ox + r.x,         to: ox + r.x + r.width});
+                if (r.z + r.depth > HD - THRESH) skipBack.push ({from: ox + r.x,         to: ox + r.x + r.width});
+                if (r.x < THRESH)               skipLeft.push ({from: oz + r.z,         to: oz + r.z + r.depth});
+                if (r.x + r.width > HW - THRESH) skipRight.push({from: oz + r.z,         to: oz + r.z + r.depth});
+            }
         });
-
+        
         const addWallSeg = (w, h, d, x, y, z) => {
             const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wMat);
             m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
@@ -665,7 +697,7 @@
         const fH = (floorH !== undefined) ? floorH : WALL_H;
         const wy2 = by + fH * 0.62;
         rooms.forEach(room => {
-            if (room.type === 'balcony') return; // balcony has open wall — no auto-window
+            if (room.type === 'balcony' || room.type === 'entrance') return;// balcony has open wall — no auto-window
             const cx = ox + room.x + room.width / 2;
             const cz = oz + room.z + room.depth / 2;
             // Front face window
@@ -765,6 +797,7 @@
             garage:    furnishGarage,
             balcony:   furnishBalcony,
             hallway:   furnishHallway,
+            entrance:  furnishEntrance,
         }[room.type];
 
         if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
@@ -1501,29 +1534,291 @@
             cyl(0.16, 0.03, 0.20, 8, 0x33922a, px, fl + 1.08, pz, 'furniture');
         });
 
-        // ── Vertical garden (on short end wall, fully inside) ─────────
-        const vgThick = 0.09;
-        const vgW = isLong ? Math.min(rw * 0.45, 1.6) : vgThick;
-        const vgD = isLong ? vgThick : Math.min(rd * 0.45, 1.6);
-        const vgH = Math.min(1.8, Math.min(rw, rd) * 0.9);
-        // Place on the far short wall, inset so it stays inside
-        const vgX = isLong ? cx + rw/2 - vgThick/2 - 0.05 : cx;
-        const vgZ = isLong ? cz : cz + rd/2 - vgThick/2 - 0.05;
-        const vgY = fl + vgH / 2 + 0.15;
-        box(vgW + 0.06, vgH + 0.08, vgD + 0.06, 0x2a1a08, vgX, vgY, vgZ, 0.9, 'furniture');
-        const vgRows = Math.max(3, Math.floor(vgH / 0.28));
-        for (let r = 0; r < vgRows; r++) {
-            const gy = fl + 0.2 + r * (vgH / vgRows);
-            box(vgW, 0.22, vgD, r % 2 === 0 ? 0x2a7a1a : 0x1e5c14, vgX, gy, vgZ, 0.9, 'furniture');
+
+// ── Vertical garden — wall-mounted trellis with plant pockets ──
+        // Mounted flat against the short end wall, fully inside room
+        const vgPanelW = isLong ? Math.min(rw * 0.5, 2.0) : 0.07;
+        const vgPanelD = isLong ? 0.07 : Math.min(rd * 0.5, 2.0);
+        const vgPanelH = Math.min(1.6, 2.3);
+        const vgBaseY  = fl + 0.35;
+
+        // Anchor to short end wall — inset by half panel depth + small gap
+        const vgX = isLong ? cx + rw/2 - vgPanelW/2 - 0.12 : cx - (isLong ? 0 : (Math.min(rd,rw)*0.5 - vgPanelW/2 - 0.12));
+        const vgZ = isLong ? cz - rd/2 + vgPanelD/2 + 0.12 : cz + rd/2 - vgPanelD/2 - 0.12;
+
+        // Trellis backing frame (dark timber)
+        box(vgPanelW, vgPanelH, vgPanelD, 0x2c1a0a, vgX, vgBaseY + vgPanelH/2, vgZ, 0.95, 'furniture');
+
+        // Trellis grid lines (lighter wood strips)
+        const cols = Math.max(2, Math.round((isLong ? vgPanelW : vgPanelD) / 0.35));
+        const rows = Math.max(3, Math.round(vgPanelH / 0.35));
+        for (let c = 0; c <= cols; c++) {
+            const t = -( isLong ? vgPanelW : vgPanelD )/2 + c * (( isLong ? vgPanelW : vgPanelD ) / cols);
+            if (isLong) box(0.03, vgPanelH, 0.03, 0x5a3510, vgX + t, vgBaseY + vgPanelH/2, vgZ, 0.8, 'furniture');
+            else        box(0.03, vgPanelH, 0.03, 0x5a3510, vgX,     vgBaseY + vgPanelH/2, vgZ + t, 0.8, 'furniture');
         }
-        [0.2, 0.55, 0.85].forEach((frac, fi) => {
-            const fy = fl + 0.2 + frac * vgH;
-            box(isLong ? vgW * 0.3 : vgThick + 0.02, 0.06, isLong ? vgThick + 0.02 : vgD * 0.3,
-                [0xffcc00, 0xff6644, 0xffffff][fi], vgX, fy, vgZ, 0.9, 'furniture');
-        });
-        const gardenLight = new THREE.PointLight(0x88cc66, 0.4, 1.8);
-        gardenLight.position.set(vgX, vgY + 0.5, vgZ);
+        for (let r = 0; r <= rows; r++) {
+            const gy = vgBaseY + r * (vgPanelH / rows);
+            if (isLong) box(vgPanelW, 0.03, 0.03, 0x5a3510, vgX, gy, vgZ, 0.8, 'furniture');
+            else        box(0.03, 0.03, vgPanelD, 0x5a3510, vgX, gy, vgZ, 0.8, 'furniture');
+        }
+
+        // Plant pockets — small terracotta troughs mounted in trellis cells
+        const pocketCols = Math.max(1, cols - 1);
+        const pocketRows = Math.max(2, rows - 1);
+        for (let pc = 0; pc < pocketCols; pc++) {
+            for (let pr = 0; pr < pocketRows; pr++) {
+                const span = isLong ? vgPanelW : vgPanelD;
+                const ct   = -span/2 + (pc + 0.5) * (span / pocketCols);
+                const gy   = vgBaseY + (pr + 0.5) * (vgPanelH / pocketRows);
+                const px   = isLong ? vgX + ct : vgX;
+                const pz   = isLong ? vgZ       : vgZ + ct;
+                // Small terracotta pot
+                cyl(0.09, 0.1, 0.12, 8, 0xb5601a, px, gy - 0.06, pz, 'furniture');
+                // Soil
+                cyl(0.08, 0.08, 0.02, 8, 0x3a2010, px, gy + 0.01, pz, 'furniture');
+                // Plant — alternate between bushy and trailing types
+                const plantCol = (pc + pr) % 3 === 0 ? 0x33aa22 : (pc + pr) % 3 === 1 ? 0x227733 : 0x44bb33;
+                if ((pc + pr) % 2 === 0) {
+                    // Bushy round plant
+                    cyl(0.12, 0.04, 0.18, 7, plantCol, px, gy + 0.17, pz, 'furniture');
+                    cyl(0.09, 0.03, 0.12, 7, 0x2a8822, px, gy + 0.27, pz, 'furniture');
+                } else {
+                    // Trailing vine — a few small drooping leaf clusters
+                    for (let v = 0; v < 3; v++) {
+                        const vOff = v * 0.1;
+                        const hOff = (v % 2 === 0 ? 0.06 : -0.06);
+                        cyl(0.06, 0.02, 0.08, 6, plantCol,
+                            px + (isLong ? hOff : 0),
+                            gy + 0.18 - vOff,
+                            pz + (isLong ? 0 : hOff), 'furniture');
+                    }
+                }
+            }
+        }
+
+        // Warm green accent light for the garden
+        const gardenLight = new THREE.PointLight(0x99dd66, 0.55, 2.2);
+        gardenLight.position.set(
+            vgX + (isLong ? 0 : 0.4),
+            vgBaseY + vgPanelH * 0.7,
+            vgZ + (isLong ? 0.4 : 0)
+        );
         scene.add(gardenLight);
+    }
+
+    function furnishEntrance(cx, cz, fl, rw, rd) {
+    const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
+
+    // ── Stone-textured floor with herringbone pattern ──────────────────
+    const stoneCol = currentStyle === 'luxury'      ? 0xd4c9b0 :
+                     currentStyle === 'traditional' ? 0xc8b890 :
+                     currentStyle === 'minimalist'  ? 0xeeeeee : 0xd0c8b8;
+    box(rw - 0.05, 0.04, rd - 0.05, stoneCol, cx, fl + 0.02, cz, 0.7, 'furniture');
+    // Textured tile lines
+    const tSize = 0.55;
+    for (let i = -Math.floor(rw / tSize / 2); i <= Math.floor(rw / tSize / 2); i++) {
+        box(0.012, 0.045, rd - 0.1, 0xaaa090, cx + i * tSize, fl + 0.038, cz, 0.4, 'furniture');
+    }
+    for (let j = -Math.floor(rd / tSize / 2); j <= Math.floor(rd / tSize / 2); j++) {
+        box(rw - 0.1, 0.045, 0.012, 0xaaa090, cx, fl + 0.038, cz + j * tSize, 0.4, 'furniture');
+    }
+
+    // ── Grand ceiling coffers / molding ───────────────────────────────
+    const ceilY = fl + (WALL_H - 0.06);
+    const cofferW = Math.min(rw * 0.4, 2.0), cofferD = Math.min(rd * 0.4, 2.0);
+    const cofferCol = currentStyle === 'luxury' ? 0x1a1520 :
+                      currentStyle === 'minimalist' ? 0xfafafa : 0xf0ece4;
+    // Center coffer frame
+    box(cofferW + 0.12, 0.06, 0.05, cofferCol, cx, ceilY, cz - cofferD / 2, 0.85, 'furniture');
+    box(cofferW + 0.12, 0.06, 0.05, cofferCol, cx, ceilY, cz + cofferD / 2, 0.85, 'furniture');
+    box(0.05, 0.06, cofferD, cofferCol, cx - cofferW / 2, ceilY, cz, 0.85, 'furniture');
+    box(0.05, 0.06, cofferD, cofferCol, cx + cofferW / 2, ceilY, cz, 0.85, 'furniture');
+    // Crown molding perimeter
+    const moldCol = currentStyle === 'luxury' ? 0xc9a84c : 0xe8e2d8;
+    box(rw - 0.1, 0.09, 0.06, moldCol, cx, ceilY - 0.01, cz - rd / 2 + 0.05, 0.9, 'furniture');
+    box(rw - 0.1, 0.09, 0.06, moldCol, cx, ceilY - 0.01, cz + rd / 2 - 0.05, 0.9, 'furniture');
+    box(0.06, 0.09, rd - 0.1, moldCol, cx - rw / 2 + 0.05, ceilY - 0.01, cz, 0.9, 'furniture');
+    box(0.06, 0.09, rd - 0.1, moldCol, cx + rw / 2 - 0.05, ceilY - 0.01, cz, 0.9, 'furniture');
+
+    // ── Grand chandelier ──────────────────────────────────────────────
+    const chandelierCol = currentStyle === 'luxury' ? 0xc9a84c :
+                          currentStyle === 'traditional' ? 0xb8960a : 0xddddaa;
+    // Drop rod
+    cyl(0.025, 0.025, 0.65, 8, chandelierCol, cx, fl + WALL_H - 0.36, cz, 'furniture');
+    // Central orb
+    cyl(0.10, 0.10, 0.20, 12, chandelierCol, cx, fl + WALL_H - 0.78, cz, 'furniture');
+    // Arms (radial)
+    const armAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2, Math.PI / 4, -Math.PI / 4, 3 * Math.PI / 4, -3 * Math.PI / 4];
+    const armR = Math.min(rw, rd) * 0.22;
+    armAngles.forEach((angle, i) => {
+        const ax = cx + Math.sin(angle) * armR * 0.5;
+        const az = cz + Math.cos(angle) * armR * 0.5;
+        // Arm rod
+        const armMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(i < 4 ? armR : armR * 0.65, 0.03, 0.03),
+            mat(chandelierCol, 0.4, 0.6)
+        );
+        armMesh.position.set(ax - Math.sin(angle) * armR * 0.25, fl + WALL_H - 0.78, az - Math.cos(angle) * armR * 0.25);
+        armMesh.rotation.y = angle;
+        scene.add(armMesh); groups.furniture.push(armMesh);
+        // Pendant bulb
+        cyl(0.055, 0.04, 0.18, 8, 0xfffce0,
+            cx + Math.sin(angle) * armR * (i < 4 ? 0.92 : 0.72),
+            fl + WALL_H - 0.97,
+            cz + Math.cos(angle) * armR * (i < 4 ? 0.92 : 0.72), 'furniture');
+        // Warm point light per arm (subset to avoid overdraw)
+        if (i < 4) {
+            const pl = new THREE.PointLight(0xffd88a, 0.45, Math.max(rw, rd) * 1.1, 2);
+            pl.position.set(
+                cx + Math.sin(angle) * armR * 0.9,
+                fl + WALL_H - 1.05,
+                cz + Math.cos(angle) * armR * 0.9
+            );
+            pl.userData.baseIntensity = 0.45;
+            scene.add(pl);
+        }
+    });
+    // Center drip pendants
+    [0.0, 0.18, -0.18].forEach((dy, i) => {
+        cyl(0.065, 0.05, 0.22, 10, 0xfffce0, cx + (i === 1 ? 0.14 : i === 2 ? -0.14 : 0), fl + WALL_H - 1.1 + dy * 0.3, cz, 'furniture');
+    });
+
+    // ── Stone-framed grand doorway (front wall) ───────────────────────
+    const doorW = Math.min(rw * 0.45, 2.0);
+    const doorH = Math.min(WALL_H - 0.35, 2.4);
+    const stoneFrameCol = currentStyle === 'luxury'      ? 0x2a2a35 :
+                          currentStyle === 'minimalist'  ? 0xd8d8d8 :
+                          currentStyle === 'traditional' ? 0x7a6a50 : 0x6a7a8a;
+    const doorZ = cz - rd / 2 + 0.08;
+    // Side pillars
+    [-1, 1].forEach(side => {
+        const px = cx + side * (doorW / 2 + 0.15);
+        // Main pillar
+        box(0.28, doorH + 0.1, 0.22, stoneFrameCol, px, fl + (doorH + 0.1) / 2, doorZ, 0.75, 'furniture');
+        // Pillar cap
+        box(0.36, 0.12, 0.30, stoneFrameCol, px, fl + doorH + 0.15, doorZ, 0.8, 'furniture');
+        // Pillar base plinth
+        box(0.34, 0.10, 0.28, stoneFrameCol, px, fl + 0.05, doorZ, 0.8, 'furniture');
+        // Stone texture detail bands
+        [0.4, 0.9, 1.5, 2.0].forEach(yy => {
+            if (yy < doorH)
+                box(0.30, 0.025, 0.24, 0x888888, px, fl + yy, doorZ, 0.5, 'furniture');
+        });
+    });
+    // Lintel / arch top
+    box(doorW + 0.6, 0.20, 0.22, stoneFrameCol, cx, fl + doorH + 0.10, doorZ, 0.75, 'furniture');
+    box(doorW + 0.72, 0.07, 0.25, stoneFrameCol, cx, fl + doorH + 0.25, doorZ, 0.8, 'furniture');
+    // Glass facade panels in doorway (glass facade effect)
+    const glassMat = new THREE.MeshStandardMaterial({
+        color: 0x88ddf0, transparent: true, opacity: 0.30,
+        roughness: 0.04, metalness: 0.15, side: THREE.DoubleSide
+    });
+    [-doorW * 0.25, doorW * 0.25].forEach(dx => {
+        const gp = new THREE.Mesh(new THREE.BoxGeometry(doorW * 0.45, doorH - 0.06, 0.06), glassMat);
+        gp.position.set(cx + dx, fl + (doorH - 0.06) / 2 + 0.03, doorZ);
+        scene.add(gp); groups.walls.push(gp);
+    });
+
+    // ── Symmetrical potted plants flanking doorway ────────────────────
+    const plantCol = currentStyle === 'traditional' ? 0xc87941 :
+                     currentStyle === 'luxury'      ? 0x2a1a08 : 0x7a5030;
+    [-1, 1].forEach(side => {
+        const px = cx + side * (doorW / 2 + 0.75);
+        const pz = doorZ + 0.45;
+        // Pot
+        cyl(0.18, 0.22, 0.40, 12, plantCol, px, fl + 0.20, pz, 'furniture');
+        cyl(0.16, 0.16, 0.05, 12, 0x3a2010, px, fl + 0.43, pz, 'furniture');
+        // Tall ornamental plant / topiary
+        cyl(0.035, 0.035, 0.85, 6, 0x2d5c15, px, fl + 0.87, pz, 'furniture');
+        cyl(0.32, 0.10, 0.60, 10, 0x267a19, px, fl + 1.42, pz, 'furniture');
+        cyl(0.22, 0.06, 0.40, 10, 0x31922e, px, fl + 1.82, pz, 'furniture');
+        cyl(0.12, 0.04, 0.25, 8,  0x3aaa36, px, fl + 2.09, pz, 'furniture');
+        // Ground-level accent flowers
+        [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach(ang => {
+            box(0.06, 0.06, 0.06, 0xffdd44,
+                px + Math.sin(ang) * 0.20, fl + 0.52,
+                pz + Math.cos(ang) * 0.20, 0.6, 'furniture');
+        });
+    });
+
+    // ── Warm wall sconces (bilateral symmetry) ────────────────────────
+    const sconceCol = currentStyle === 'luxury' ? 0xc9a84c : 0xb8b090;
+    const scY = fl + WALL_H * 0.58;
+    [-rw * 0.28, rw * 0.28].forEach(dx => {
+        // Sconce base plate
+        box(0.10, 0.28, 0.06, sconceCol, cx + dx, scY, cz - rd / 2 + 0.06, 0.5, 'furniture');
+        // Arm
+        box(0.04, 0.04, 0.22, sconceCol, cx + dx, scY + 0.05, cz - rd / 2 + 0.17, 0.4, 'furniture');
+        // Shade
+        cyl(0.07, 0.05, 0.22, 8, 0xfffde0, cx + dx, scY + 0.05, cz - rd / 2 + 0.28, 'furniture');
+        // Warm point light
+        const sl = new THREE.PointLight(0xffcc66, 0.6, 2.8, 2);
+        sl.position.set(cx + dx, scY + 0.18, cz - rd / 2 + 0.30);
+        sl.userData.baseIntensity = 0.6;
+        scene.add(sl);
+    });
+
+    // ── Vertical garden panel (side wall, warm wood finish backing) ───
+    const vgThick = 0.10;
+    const vgW = Math.min(rw * 0.35, 1.5);
+    const vgH = Math.min(WALL_H * 0.58, 1.6);
+    const vgX = cx + rw / 2 - vgThick / 2 - 0.06;
+    const vgZ = cz + rd * 0.05;
+    const vgY2 = fl + vgH / 2 + 0.28;
+    // Wood backing panel
+    box(vgThick + 0.04, vgH + 0.12, vgW + 0.10, 0x5c3d1e, vgX, vgY2, vgZ, 0.7, 'furniture');
+    // Green rows
+    const vgRows = Math.max(3, Math.floor(vgH / 0.30));
+    for (let r = 0; r < vgRows; r++) {
+        const gy = fl + 0.32 + r * (vgH / vgRows);
+        box(vgThick, 0.24, vgW - 0.06, r % 2 === 0 ? 0x2a7a1a : 0x1d6010, vgX, gy, vgZ, 0.9, 'furniture');
+    }
+    // Accent flowers on garden
+    [0.25, 0.65, 1.05].forEach((frac, fi) => {
+        box(vgThick + 0.02, 0.07, vgW * 0.22,
+            [0xffcc00, 0xff6644, 0xffffff][fi],
+            vgX, fl + 0.32 + frac * vgH, vgZ, 0.9, 'furniture');
+    });
+    const gLight = new THREE.PointLight(0x88cc66, 0.35, 2.0);
+    gLight.position.set(vgX - 0.4, vgY2 + 0.3, vgZ);
+    scene.add(gLight);
+
+    // ── Floating staircase (modern minimalist) ────────────────────────
+    const stairW2 = Math.min(rw * 0.38, 1.5);
+    const stairCount = 5; // partial run visible in entrance
+    const stepH2 = 0.18, stepD2 = 0.32;
+    const startX2 = cx + rw * 0.08;
+    const startZ2 = cz + rd * 0.05;
+    const stepCol = currentStyle === 'luxury'      ? 0xd4b896 :
+                    currentStyle === 'traditional'  ? 0x8b5c2a :
+                    currentStyle === 'minimalist'   ? 0xeeeeee : 0x7a8fa6;
+    const railCol2 = currentStyle === 'luxury' ? 0xc9a84c :
+                     currentStyle === 'minimalist' ? 0x888888 : 0x4a6fa5;
+    for (let i = 0; i < stairCount; i++) {
+        // Floating tread — cantilevered look (no risers)
+        box(stairW2, stepH2 * 0.22, stepD2 - 0.02, stepCol,
+            startX2, fl + (i + 1) * stepH2, startZ2 + i * stepD2, 0.35, 'furniture');
+        // Thin riser gap (dark) for floating effect
+        box(stairW2, stepH2 * 0.75, 0.01, 0x111111,
+            startX2, fl + (i + 0.5) * stepH2, startZ2 + i * stepD2, 0.9, 'furniture');
+    }
+    // Stainless cable railing
+    const railH2 = 0.95;
+    box(0.055, railH2 + stairCount * stepH2 * 0.75, 0.055, railCol2,
+        startX2 - stairW2 / 2 - 0.025, fl + (railH2 + stairCount * stepH2 * 0.75) / 2, startZ2 + stairCount * stepD2 * 0.45, 0.5, 'furniture');
+    for (let i = 0; i <= stairCount; i++) {
+        box(stairW2 + 0.1, 0.025, 0.025, railCol2,
+            startX2, fl + (i + 1) * stepH2 + railH2 * (i / stairCount), startZ2 + i * stepD2, 0.4, 'furniture');
+    }
+
+    // ── Welcome mat ──────────────────────────────────────────────────
+    const matCol = currentStyle === 'luxury' ? 0x2a1a08 : 0x4a3a28;
+    addMesh(new THREE.BoxGeometry(Math.min(rw * 0.3, 1.2), 0.025, Math.min(rd * 0.12, 0.55)),
+        mat(matCol, 0.98), cx, fl + 0.013, cz - rd / 2 + 0.5, 0, 0, 'furniture');
+    // Mat pattern (lighter stripe)
+    box(Math.min(rw * 0.26, 1.0), 0.03, 0.04, 0x7a6a50, cx, fl + 0.016, cz - rd / 2 + 0.5, 0.9, 'furniture');
+
     }
     
     // ── Labels (canvas sprites) ──────────────────────────────

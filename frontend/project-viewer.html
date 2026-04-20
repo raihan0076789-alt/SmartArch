@@ -420,6 +420,7 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
         bathroom:{hex:0xe06f6f,css:'#e06f6f',floor:0xf0f0f0},kitchen:{hex:0xe0a847,css:'#e0a847',floor:0xc8c0b0},
         dining:{hex:0x9c6fe0,css:'#9c6fe0',floor:0xe8e0d0},office:{hex:0x6fa8e0,css:'#6fa8e0',floor:0x8b8070},
         garage:{hex:0x8a8070,css:'#8a8070',floor:0x707070},staircase:{hex:0xff9632,css:'#ff9632',floor:0xc8a870},
+        hallway:{hex:0xc8a96e,css:'#c8a96e',floor:0xc8a07a},
         other:{hex:0xaaaaaa,css:'#aaaaaa',floor:0x999999},
     };
 
@@ -677,7 +678,7 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
     function buildRoomFurniture(room,ox,oz,baseY){
         const cx=ox+room.x+room.width/2,cz=oz+room.z+room.depth/2;
         const fl=(baseY??0.22)+0.05,rw=room.width,rd=room.depth;
-        const fn={living:furnishLiving,kitchen:furnishKitchen,dining:furnishDining,bedroom:furnishBedroom,bathroom:furnishBathroom,office:furnishOffice,staircase:furnishStaircase,garage:furnishGarage,balcony:furnishBalcony}[room.type];
+        const fn={living:furnishLiving,kitchen:furnishKitchen,dining:furnishDining,bedroom:furnishBedroom,bathroom:furnishBathroom,office:furnishOffice,staircase:furnishStaircase,garage:furnishGarage,balcony:furnishBalcony,hallway:furnishHallway}[room.type];
         if(fn)fn(cx,cz,fl,rw,rd,room,baseY);else furnishDefault(cx,cz,fl,rw,rd);
     }
 
@@ -1020,6 +1021,133 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
             const beamCol=currentStyle==='luxury'?0x5c3d1e:0x555566;
             [cx-rw*0.2,cx,cx+rw*0.2].forEach(bx=>box(0.07,0.09,rd*0.88,beamCol,bx,fl+WALL_H-0.06,cz,0.75,'furniture'));
         }
+    }
+    
+    function furnishHallway(cx,cz,fl,rw,rd){
+        const isLong=rw>=rd;
+        // Wooden floor overlay
+        box(rw-0.05,0.018,rd-0.05,0xc8a07a,cx,fl+0.009,cz,0.85,'furniture');
+        const plankDir=isLong?rw:rd,plankCount=Math.floor(plankDir/0.18);
+        for(let i=1;i<plankCount;i++){
+            const t=-plankDir/2+i*0.18;
+            if(isLong)box(0.006,0.002,rd-0.1,0x9a6a3a,cx+t,fl+0.02,cz,0.4,'furniture');
+            else box(rw-0.1,0.002,0.006,0x9a6a3a,cx,fl+0.02,cz+t,0.4,'furniture');
+        }
+        // Skirting boards
+        const skH=0.12,skD=0.025,skCol=0xf5f0e8;
+        if(isLong){
+            box(rw-0.1,skH,skD,skCol,cx,fl+skH/2,cz-rd/2+skD/2+0.02,0.9,'furniture');
+            box(rw-0.1,skH,skD,skCol,cx,fl+skH/2,cz+rd/2-skD/2-0.02,0.9,'furniture');
+        }else{
+            box(skD,skH,rd-0.1,skCol,cx-rw/2+skD/2+0.02,fl+skH/2,cz,0.9,'furniture');
+            box(skD,skH,rd-0.1,skCol,cx+rw/2-skD/2-0.02,fl+skH/2,cz,0.9,'furniture');
+        }
+        // Wall art frames with accent spotlights
+        const artThick=0.05,artH=0.42,artWid=Math.min((isLong?rw:rd)*0.22,0.55);
+        const artCount=Math.max(1,Math.floor((isLong?rw:rd)/2.4));
+        const artSpan=(isLong?rw:rd)*0.72,wallY=fl+1.45;
+        const artColors=[0x8b5e3c,0x4a7c6f,0x7a5c8a,0xb5844a,0x4a6b8a];
+        for(let i=0;i<artCount;i++){
+            const t=artCount===1?0:-artSpan/2+i*(artSpan/Math.max(1,artCount-1));
+            if(isLong){
+                const artX=cx+t;
+                const artZ_front=cz-rd/2+artThick/2+0.04;
+                const artZ_back=cz+rd/2-artThick/2-0.04;
+                box(artWid,artH,artThick,artColors[i%artColors.length],artX,wallY,artZ_front,0.9,'furniture');
+                box(artWid+0.06,artH+0.06,artThick+0.01,0x3a2510,artX,wallY,artZ_front,0.85,'furniture');
+                const sl=new THREE.PointLight(0xffcc66,0.8,1.5);sl.position.set(artX,wallY+0.8,artZ_front+0.3);scene.add(sl);
+                if(rd>2.5){
+                    box(artWid,artH,artThick,artColors[(i+2)%artColors.length],artX,wallY,artZ_back,0.9,'furniture');
+                    box(artWid+0.06,artH+0.06,artThick+0.01,0x3a2510,artX,wallY,artZ_back,0.85,'furniture');
+                    const sl2=new THREE.PointLight(0xffcc66,0.8,1.5);sl2.position.set(artX,wallY+0.8,artZ_back-0.3);scene.add(sl2);
+                }
+            }else{
+                const artZ=cz+t;
+                const artX_left=cx-rw/2+artThick/2+0.04;
+                const artX_right=cx+rw/2-artThick/2-0.04;
+                box(artThick,artH,artWid,artColors[i%artColors.length],artX_left,wallY,artZ,0.9,'furniture');
+                box(artThick+0.01,artH+0.06,artWid+0.06,0x3a2510,artX_left,wallY,artZ,0.85,'furniture');
+                const sl=new THREE.PointLight(0xffcc66,0.8,1.5);sl.position.set(artX_left+0.3,wallY+0.8,artZ);scene.add(sl);
+                if(rw>2.5){
+                    box(artThick,artH,artWid,artColors[(i+2)%artColors.length],artX_right,wallY,artZ,0.9,'furniture');
+                    box(artThick+0.01,artH+0.06,artWid+0.06,0x3a2510,artX_right,wallY,artZ,0.85,'furniture');
+                    const sl2=new THREE.PointLight(0xffcc66,0.8,1.5);sl2.position.set(artX_right-0.3,wallY+0.8,artZ);scene.add(sl2);
+                }
+            }
+        }
+        // Pendant ceiling light
+        cyl(0.04,0.05,0.04,8,0x888888,cx,fl+2.55,cz,'furniture');
+        cyl(0.005,0.005,0.4,8,0x999999,cx,fl+2.35,cz,'furniture');
+        cyl(0.14,0.06,0.22,12,0xf5f0e8,cx,fl+2.14,cz,'furniture');
+        const pendLight=new THREE.PointLight(0xffe8b0,1.1,Math.max(rw,rd)*1.4);
+        pendLight.position.set(cx,fl+2.0,cz);scene.add(pendLight);
+        // Potted plants
+        const margin=0.35,plantPositions=[];
+        if(isLong){
+            const plantCount=Math.max(1,Math.floor(rw/2.8)),span=rw-margin*2;
+            for(let i=0;i<plantCount;i++){
+                const px=cx-span/2+(plantCount===1?span/2:i*span/(plantCount-1));
+                const pzOff=Math.min(rd/2-margin,rd*0.32);
+                plantPositions.push([px,cz+pzOff]);plantPositions.push([px,cz-pzOff]);
+            }
+        }else{
+            const plantCount=Math.max(1,Math.floor(rd/2.8)),span=rd-margin*2;
+            for(let i=0;i<plantCount;i++){
+                const pz=cz-span/2+(plantCount===1?span/2:i*span/(plantCount-1));
+                const pxOff=Math.min(rw/2-margin,rw*0.32);
+                plantPositions.push([cx+pxOff,pz]);plantPositions.push([cx-pxOff,pz]);
+            }
+        }
+        plantPositions.forEach(([px,pz])=>{
+            cyl(0.13,0.16,0.28,10,0x7a5030,px,fl+0.14,pz,'furniture');
+            cyl(0.12,0.12,0.04,10,0x3a2010,px,fl+0.30,pz,'furniture');
+            cyl(0.025,0.025,0.55,6,0x2d6e1b,px,fl+0.58,pz,'furniture');
+            cyl(0.22,0.04,0.28,8,0x2a7a1a,px,fl+0.90,pz,'furniture');
+            cyl(0.16,0.03,0.20,8,0x33922a,px,fl+1.08,pz,'furniture');
+        });
+        // Vertical garden trellis
+        const vgPanelW=isLong?Math.min(rw*0.5,2.0):0.07;
+        const vgPanelD=isLong?0.07:Math.min(rd*0.5,2.0);
+        const vgPanelH=Math.min(1.6,2.3),vgBaseY=fl+0.35;
+        const vgX=isLong?cx+rw/2-vgPanelW/2-0.12:cx-(Math.min(rd,rw)*0.5-vgPanelW/2-0.12);
+        const vgZ=isLong?cz-rd/2+vgPanelD/2+0.12:cz+rd/2-vgPanelD/2-0.12;
+        box(vgPanelW,vgPanelH,vgPanelD,0x2c1a0a,vgX,vgBaseY+vgPanelH/2,vgZ,0.95,'furniture');
+        const cols=Math.max(2,Math.round((isLong?vgPanelW:vgPanelD)/0.35));
+        const rows=Math.max(3,Math.round(vgPanelH/0.35));
+        for(let c=0;c<=cols;c++){
+            const t=-(isLong?vgPanelW:vgPanelD)/2+c*((isLong?vgPanelW:vgPanelD)/cols);
+            if(isLong)box(0.03,vgPanelH,0.03,0x5a3510,vgX+t,vgBaseY+vgPanelH/2,vgZ,0.8,'furniture');
+            else box(0.03,vgPanelH,0.03,0x5a3510,vgX,vgBaseY+vgPanelH/2,vgZ+t,0.8,'furniture');
+        }
+        for(let r=0;r<=rows;r++){
+            const gy=vgBaseY+r*(vgPanelH/rows);
+            if(isLong)box(vgPanelW,0.03,0.03,0x5a3510,vgX,gy,vgZ,0.8,'furniture');
+            else box(0.03,0.03,vgPanelD,0x5a3510,vgX,gy,vgZ,0.8,'furniture');
+        }
+        const pocketCols=Math.max(1,cols-1),pocketRows=Math.max(2,rows-1);
+        for(let pc=0;pc<pocketCols;pc++){
+            for(let pr=0;pr<pocketRows;pr++){
+                const span=isLong?vgPanelW:vgPanelD;
+                const ct=-span/2+(pc+0.5)*(span/pocketCols);
+                const gy=vgBaseY+(pr+0.5)*(vgPanelH/pocketRows);
+                const px=isLong?vgX+ct:vgX,pz=isLong?vgZ:vgZ+ct;
+                cyl(0.09,0.1,0.12,8,0xb5601a,px,gy-0.06,pz,'furniture');
+                cyl(0.08,0.08,0.02,8,0x3a2010,px,gy+0.01,pz,'furniture');
+                const plantCol=(pc+pr)%3===0?0x33aa22:(pc+pr)%3===1?0x227733:0x44bb33;
+                if((pc+pr)%2===0){
+                    cyl(0.12,0.04,0.18,7,plantCol,px,gy+0.17,pz,'furniture');
+                    cyl(0.09,0.03,0.12,7,0x2a8822,px,gy+0.27,pz,'furniture');
+                }else{
+                    for(let v=0;v<3;v++){
+                        const vOff=v*0.1,hOff=v%2===0?0.06:-0.06;
+                        cyl(0.06,0.02,0.08,6,plantCol,px+(isLong?hOff:0),gy+0.18-vOff,pz+(isLong?0:hOff),'furniture');
+                    }
+                }
+            }
+        }
+        const gardenLight=new THREE.PointLight(0x99dd66,0.55,2.2);
+        gardenLight.position.set(vgX+(isLong?0:0.4),vgBaseY+vgPanelH*0.7,vgZ+(isLong?0.4:0));
+        scene.add(gardenLight);
     }
 
     function furnishDefault(cx,cz,fl,rw,rd){
