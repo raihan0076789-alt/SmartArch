@@ -456,6 +456,8 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
         if(window._liftAnimCleanups){window._liftAnimCleanups.forEach(fn=>fn());window._liftAnimCleanups=[];}
         // Reset fountain meshes
         window._fountainMeshes=[];
+        window._poolMeshes=[];
+        window._poolAnimRegistered=false;  
         // Remove any previously injected canvas
         const oldInjected=container.querySelector('canvas.injected-gl');
         if(oldInjected)oldInjected.remove();
@@ -687,7 +689,7 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
     function buildRoomFurniture(room,ox,oz,baseY){
         const cx=ox+room.x+room.width/2,cz=oz+room.z+room.depth/2;
         const fl=(baseY??0.22)+0.05,rw=room.width,rd=room.depth;
-        const fn={living:furnishLiving,kitchen:furnishKitchen,dining:furnishDining,bedroom:furnishBedroom,bathroom:furnishBathroom,office:furnishOffice,staircase:furnishStaircase,garage:furnishGarage,balcony:furnishBalcony,hallway:furnishHallway,entrance:furnishEntrance,lift:furnishLift}[room.type];
+        const fn={living:furnishLiving,kitchen:furnishKitchen,dining:furnishDining,bedroom:furnishBedroom,bathroom:furnishBathroom,office:furnishOffice,staircase:furnishStaircase,garage:furnishGarage,balcony:furnishBalcony,hallway:furnishHallway,entrance:furnishEntrance,lift:furnishLift,swimming_pool:furnishSwimmingPool}[room.type];
         if(fn)fn(cx,cz,fl,rw,rd,room,baseY);else furnishDefault(cx,cz,fl,rw,rd);
     }
 
@@ -1183,6 +1185,105 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
         gardenLight.position.set(vgX+(isLong?0:0.4),vgBaseY+vgPanelH*0.7,vgZ+(isLong?0.4:0));
         scene.add(gardenLight);
     }
+    
+    // ── Indoor Swimming Pool ──────────────────────────────────
+    function furnishSwimmingPool(cx,cz,fl,rw,rd,room,baseY){
+        const poolW=Math.min(rw*0.62,7.5),poolD=Math.min(rd*0.62,12.0);
+        const poolDepthVis=0.45,tileSize=0.55;
+        const deckCol=currentStyle==='luxury'?0xd4c9b0:currentStyle==='traditional'?0xc8b88a:currentStyle==='minimalist'?0xd8e8ee:0xa8bcc8;
+        const tileCol=currentStyle==='luxury'?0x0a5a82:currentStyle==='minimalist'?0x1890b8:0x0d7aaa;
+        const groutCol=0xddeeff;
+        const ladderMat=mat(currentStyle==='luxury'?0xd4a84c:0xe0e0e0,0.1,0.9);
+        const stepCol=currentStyle==='traditional'?0xc8aa80:0xd0dce8;
+        // Deck
+        addMesh(new THREE.BoxGeometry(rw-0.05,0.04,rd-0.05),mat(deckCol,0.35,currentStyle==='luxury'?0.2:0.05),cx,fl+0.02,cz,0,0,'furniture');
+        // Deck grout — split around pool opening
+        const poolHalfW=poolW/2,poolHalfD=poolD/2,gy=fl+0.038;
+        for(let i=-Math.floor(rw/tileSize/2);i<=Math.floor(rw/tileSize/2);i++){
+            const lx=cx+i*tileSize;
+            if(lx>cx-poolHalfW&&lx<cx+poolHalfW){const tL=(rd/2)-poolHalfD-0.04;if(tL>0.05){box(0.010,0.05,tL,groutCol,lx,gy,cz-poolHalfD-tL/2,0.2,'furniture');box(0.010,0.05,tL,groutCol,lx,gy,cz+poolHalfD+tL/2,0.2,'furniture');}}
+            else box(0.010,0.05,rd-0.08,groutCol,lx,gy,cz,0.2,'furniture');
+        }
+        for(let j=-Math.floor(rd/tileSize/2);j<=Math.floor(rd/tileSize/2);j++){
+            const lz=cz+j*tileSize;
+            if(lz>cz-poolHalfD&&lz<cz+poolHalfD){const lL=(rw/2)-poolHalfW-0.04;if(lL>0.05){box(lL,0.05,0.010,groutCol,cx-poolHalfW-lL/2,gy,lz,0.2,'furniture');box(lL,0.05,0.010,groutCol,cx+poolHalfW+lL/2,gy,lz,0.2,'furniture');}}
+            else box(rw-0.08,0.05,0.010,groutCol,cx,gy,lz,0.2,'furniture');
+        }
+        // Basin
+        const pfl=fl+poolDepthVis-0.03;
+        addMesh(new THREE.BoxGeometry(poolW-0.12,0.06,poolD-0.12),mat(tileCol,0.25,0.15),cx,pfl-poolDepthVis+0.03,cz,0,0,'furniture');
+        const bwMat=mat(tileCol,0.22,0.12);
+        [cz-poolD/2,cz+poolD/2].forEach(wz=>{const m=new THREE.Mesh(new THREE.BoxGeometry(poolW,poolDepthVis,0.10),bwMat);m.position.set(cx,pfl-poolDepthVis/2,wz);m.castShadow=true;scene.add(m);groups.furniture.push(m);});
+        [cx-poolW/2,cx+poolW/2].forEach(wx=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.10,poolDepthVis,poolD),bwMat);m.position.set(wx,pfl-poolDepthVis/2,cz);m.castShadow=true;scene.add(m);groups.furniture.push(m);});
+        // Coping
+        const copingMat=mat(currentStyle==='luxury'?0xe8d8b0:0xd0dce8,0.2,0.15);
+        [cz-poolD/2-0.06,cz+poolD/2+0.06].forEach(wz=>{const m=new THREE.Mesh(new THREE.BoxGeometry(poolW+0.24,0.06,0.22),copingMat);m.position.set(cx,pfl+0.03,wz);m.castShadow=true;scene.add(m);groups.furniture.push(m);});
+        [cx-poolW/2-0.06,cx+poolW/2+0.06].forEach(wx=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.06,poolD+0.24),copingMat);m.position.set(wx,pfl+0.03,cz);m.castShadow=true;scene.add(m);groups.furniture.push(m);});
+        // Water surface
+        const waterColor=currentStyle==='luxury'?0x006688:currentStyle==='traditional'?0x007799:currentStyle==='minimalist'?0x1199bb:0x0077aa;
+        const waterMat=new THREE.MeshPhysicalMaterial({color:waterColor,emissive:new THREE.Color(waterColor).multiplyScalar(0.45),emissiveIntensity:0.55,transparent:true,opacity:0.92,roughness:0.08,metalness:0.0,transmission:0.0,ior:1.33,reflectivity:0.30,side:THREE.DoubleSide,depthWrite:false});
+        const waterSurface=new THREE.Mesh(new THREE.PlaneGeometry(poolW-0.14,poolD-0.14,32,32),waterMat);
+        waterSurface.rotation.x=-Math.PI/2;waterSurface.position.set(cx,pfl-0.04,cz);waterSurface.userData.poolWater=true;scene.add(waterSurface);groups.furniture.push(waterSurface);
+        // Deep layer
+        const deepMat=new THREE.MeshStandardMaterial({color:currentStyle==='luxury'?0x003344:0x004466,emissive:0x001122,emissiveIntensity:0.45,transparent:true,opacity:0.95,side:THREE.FrontSide});
+        const deepLayer=new THREE.Mesh(new THREE.PlaneGeometry(poolW-0.22,poolD-0.22),deepMat);
+        deepLayer.rotation.x=-Math.PI/2;deepLayer.position.set(cx,pfl-poolDepthVis+0.07,cz);scene.add(deepLayer);groups.furniture.push(deepLayer);
+        // Caustic overlay
+        const causticMat=new THREE.MeshStandardMaterial({color:0x55ddff,emissive:0x00bbdd,emissiveIntensity:0.85,transparent:true,opacity:0.28,side:THREE.DoubleSide,depthWrite:false});
+        const caustic=new THREE.Mesh(new THREE.PlaneGeometry(poolW-0.20,poolD-0.20,20,20),causticMat);
+        caustic.rotation.x=-Math.PI/2;caustic.position.set(cx,pfl-0.03,cz);caustic.userData.poolCaustic=true;scene.add(caustic);groups.furniture.push(caustic);
+        // Lane lines
+        const laneColors=[0x1166aa,0xee8800],laneCount=Math.max(2,Math.floor(poolW/2.2));
+        for(let li=0;li<laneCount;li++){const laneX=cx-poolW/2+(li+0.5)*(poolW/laneCount);const laneMat=new THREE.MeshStandardMaterial({color:laneColors[li%2],emissive:laneColors[li%2],emissiveIntensity:0.15,roughness:0.3});const lane=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.01,poolD-0.22),laneMat);lane.position.set(laneX,pfl-poolDepthVis+0.075,cz);scene.add(lane);groups.furniture.push(lane);}
+        // Underwater lights
+        const uwLightColor=0x00ccff;
+        [[cx-poolW*0.28,cz-poolD*0.35],[cx+poolW*0.28,cz-poolD*0.35],[cx-poolW*0.28,cz+poolD*0.35],[cx+poolW*0.28,cz+poolD*0.35],[cx,cz]].forEach(([lx,lz])=>{
+            const ul=new THREE.PointLight(uwLightColor,2.2,Math.max(poolW,poolD)*1.1,1.5);ul.position.set(lx,pfl-poolDepthVis+0.18,lz);ul.userData.baseIntensity=2.2;scene.add(ul);
+            const lensMat=new THREE.MeshStandardMaterial({color:0x00ffff,emissive:0x00eeff,emissiveIntensity:4.0,roughness:0.0,metalness:0.1});
+            const lens=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.018,14),lensMat);lens.position.set(lx,pfl-poolDepthVis+0.14,lz);scene.add(lens);groups.furniture.push(lens);
+            const haloMat=new THREE.MeshStandardMaterial({color:0x0099dd,emissive:0x0088cc,emissiveIntensity:1.8,transparent:true,opacity:0.45,depthWrite:false});
+            const halo=new THREE.Mesh(new THREE.CircleGeometry(0.22,16),haloMat);halo.rotation.x=-Math.PI/2;halo.position.set(lx,pfl-poolDepthVis+0.08,lz);scene.add(halo);groups.furniture.push(halo);
+        });
+        const poolFillLight=new THREE.PointLight(0x0088bb,1.8,Math.max(poolW,poolD)*2.5,1);poolFillLight.position.set(cx,pfl-poolDepthVis*0.5,cz);poolFillLight.userData.baseIntensity=1.8;scene.add(poolFillLight);
+        // Ladder
+        const ladX=cx+poolW/2-0.22,ladZ=cz+poolD/2-0.35;
+        [-0.14,0.14].forEach(dx=>{const rail=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,poolDepthVis+0.55,10),ladderMat);rail.position.set(ladX+dx,pfl-(poolDepthVis+0.55)/2+0.55,ladZ);rail.castShadow=true;scene.add(rail);groups.furniture.push(rail);});
+        for(let r=0;r<4;r++){const rung=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018,0.30,8),ladderMat);rung.rotation.z=Math.PI/2;rung.position.set(ladX,pfl-poolDepthVis+0.12+r*0.14,ladZ);scene.add(rung);groups.furniture.push(rung);}
+        const arcRail=new THREE.Mesh(new THREE.TorusGeometry(0.14,0.022,8,16,Math.PI),ladderMat);arcRail.rotation.x=Math.PI/2;arcRail.position.set(ladX,pfl+0.52,ladZ);arcRail.rotation.z=Math.PI/2;scene.add(arcRail);groups.furniture.push(arcRail);
+        // Entry steps
+        for(let s=0;s<3;s++){const sW=1.2-s*0.18,sH=0.12,sZ=cz-poolD/2+s*0.24+0.18,sY=pfl-s*sH-sH/2;const stepM=new THREE.Mesh(new THREE.BoxGeometry(sW,sH,0.22),mat(stepCol,0.4,0.12));stepM.position.set(cx-poolW/2+sW/2+0.06,sY,sZ);stepM.castShadow=true;stepM.receiveShadow=true;scene.add(stepM);groups.furniture.push(stepM);}
+        // Skylight
+        const skyW=poolW*0.72,skyD=poolD*0.55,skyY=fl+(room.height||2.7)-0.05;
+        const skyFrameMat=mat(currentStyle==='luxury'?0xc9a84c:0x606878,0.3,0.65);
+        [[skyW+0.16,0.10,0.10,cx,skyY,cz-skyD/2],[skyW+0.16,0.10,0.10,cx,skyY,cz+skyD/2],[0.10,0.10,skyD+0.12,cx-skyW/2,skyY,cz],[0.10,0.10,skyD+0.12,cx+skyW/2,skyY,cz]].forEach(([w,h,d,x,y,z])=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),skyFrameMat);m.position.set(x,y,z);m.castShadow=true;scene.add(m);groups.furniture.push(m);});
+        [-skyW/3,0,skyW/3].forEach(dx=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.06,skyD),skyFrameMat);m.position.set(cx+dx,skyY,cz);scene.add(m);groups.furniture.push(m);});
+        const skyGlassMat=new THREE.MeshPhysicalMaterial({color:0xd0f0ff,transparent:true,opacity:0.28,roughness:0.0,metalness:0.05,transmission:0.85,ior:1.5,side:THREE.DoubleSide,depthWrite:false});
+        const paneW=(skyW-0.20)/3;
+        for(let pi=0;pi<3;pi++){const paneMesh=new THREE.Mesh(new THREE.BoxGeometry(paneW,0.04,skyD-0.10),skyGlassMat);paneMesh.position.set(cx-skyW/2+paneW/2+pi*paneW+pi*0.06+0.06,skyY,cz);scene.add(paneMesh);groups.furniture.push(paneMesh);}
+        const skyLight=new THREE.SpotLight(0xfff8f0,1.4,(room.height||2.7)*1.5,Math.PI/6,0.5,1.5);skyLight.position.set(cx,skyY-0.06,cz);skyLight.target.position.set(cx,fl,cz);scene.add(skyLight.target);scene.add(skyLight);
+        // Tropical plants
+        [[cx-rw*0.38,cz-rd*0.38],[cx+rw*0.38,cz-rd*0.38],[cx-rw*0.38,cz+rd*0.38],[cx+rw*0.38,cz+rd*0.38]].forEach(([px,pz],i)=>{
+            addMesh(new THREE.CylinderGeometry(0.22,0.18,0.38,12),mat(0x9a6030,0.75),px,fl+0.19,pz,0,0,'furniture');
+            addMesh(new THREE.CylinderGeometry(0.20,0.20,0.05,12),mat(0x2a1a08,0.98),px,fl+0.41,pz,0,0,'furniture');
+            addMesh(new THREE.CylinderGeometry(0.04,0.05,1.1+i*0.12,8),mat(0x5a3a15,0.85),px,fl+0.98,pz,0,0,'furniture');
+            [0,Math.PI*0.5,Math.PI,Math.PI*1.5,Math.PI*0.25,Math.PI*0.75].forEach((ang,li)=>{const lx=Math.sin(ang)*0.55,lz2=Math.cos(ang)*0.55;addMesh(new THREE.BoxGeometry(0.08,0.06,0.60),mat(li%2===0?0x1a7a20:0x28a030,0.8),px+lx*0.5,fl+1.55+i*0.05,pz+lz2*0.5,0,ang,'furniture');});
+            addMesh(new THREE.SphereGeometry(0.38,10,8),mat(i%2===0?0x228833:0x33aa44,0.85),px,fl+1.78+i*0.08,pz,0,0,'furniture');
+        });
+        // Lounge seating
+        const loungeCol=currentStyle==='luxury'?0xf5f0e8:currentStyle==='traditional'?0xd4aa70:0xf0f4f8;
+        const frameCol=currentStyle==='luxury'?0xd4a84c:0xc0c8d0;
+        const sideOffset=poolW/2+1.05;
+        [-sideOffset,sideOffset].forEach((dx,si)=>{
+            const lx=si===0?cx-sideOffset:cx+sideOffset,count=Math.max(2,Math.floor(rd*0.28));
+            for(let li=0;li<count;li++){const lz=cz-(count-1)*1.3/2+li*1.3;const frameMesh=new THREE.Mesh(new THREE.BoxGeometry(0.72,0.08,2.0),mat(frameCol,0.2,0.55));frameMesh.position.set(lx,fl+0.28,lz);frameMesh.castShadow=true;scene.add(frameMesh);groups.furniture.push(frameMesh);box(0.65,0.12,1.85,loungeCol,lx,fl+0.40,lz,0.85,'furniture');const back=new THREE.Mesh(new THREE.BoxGeometry(0.65,0.55,0.07),mat(loungeCol,0.85));back.position.set(lx,fl+0.55,lz+(si===0?0.88:-0.88));back.rotation.x=si===0?0.32:-0.32;scene.add(back);groups.furniture.push(back);box(0.55,0.02,0.80,[0xff8c69,0x5ba4cf,0x7fba8a,0xf5c842][li%4],lx,fl+0.53,lz-0.2,0.9,'furniture');[[-0.30,-0.88],[-0.30,0.88],[0.30,-0.88],[0.30,0.88]].forEach(([ldx,ldz])=>box(0.05,0.28,0.05,frameCol,lx+ldx,fl+0.14,lz+ldz,0.2,'furniture'));}
+            cyl(0.24,0.24,0.04,12,frameCol,lx,fl+0.52,cz,'furniture');cyl(0.04,0.04,0.52,8,frameCol,lx,fl+0.26,cz,'furniture');cyl(0.04,0.035,0.22,8,0xffee88,lx,fl+0.67,cz+0.08,'furniture');
+        });
+        // Ceiling fan
+        if(currentStyle==='modern'||currentStyle==='luxury'){const fanY=fl+(room.height||2.7)-0.30,fanCol=currentStyle==='luxury'?0xd4a84c:0x708090;cyl(0.06,0.06,0.18,10,fanCol,cx+poolW*0.25,fanY,cz,'furniture');[0,Math.PI/2,Math.PI,3*Math.PI/2].forEach(ang=>{const bladeMesh=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.025,0.15),mat(fanCol===0xd4a84c?0x8b6b3d:0x607080,0.6));bladeMesh.position.set(cx+poolW*0.25+Math.cos(ang)*0.35,fanY-0.10,cz+Math.sin(ang)*0.35);bladeMesh.rotation.y=ang;scene.add(bladeMesh);groups.furniture.push(bladeMesh);});}
+        // Register for animation
+        if(!window._poolMeshes)window._poolMeshes=[];
+        window._poolMeshes.push({water:waterSurface,caustic});
+    }
 
     function furnishDefault(cx,cz,fl,rw,rd){
         box(Math.min(rw*0.4,1.2),0.45,Math.min(rd*0.4,1.0),0x445566,cx,fl+0.225,cz,0.8,'furniture');
@@ -1492,6 +1593,26 @@ body{background:var(--bg);color:var(--white);font-family:'Inter',-apple-system,B
                 if(obj.isMesh&&obj.userData.waterSurface){obj.material.opacity=0.60+Math.sin(_t*2.2)*0.10;obj.position.y+=Math.sin(_t*3.5)*0.0002;}
                 if(obj.isMesh&&obj.userData.waterSheet){obj.material.opacity=0.28+Math.sin(_t*2.8+1.2)*0.07;obj.scale.y=1.0+Math.sin(_t*1.4)*0.008;}
                 if(obj.isMesh&&obj.userData.waterCurtain){obj.material.opacity=0.18+Math.sin(_t*3.1)*0.06;obj.rotation.y+=0.003;}
+            });
+        }
+        // ── Pool water ripple animation ─────────────────────────────
+        if(window._poolMeshes&&window._poolMeshes.length){
+            const pt=Date.now()*0.001;
+            window._poolMeshes.forEach(({water,caustic})=>{
+                if(water&&water.geometry&&water.geometry.attributes.position){
+                    const pos=water.geometry.attributes.position;
+                    const count=pos.count;
+                    for(let i=0;i<count;i++){const x=pos.getX(i),z=pos.getZ(i);pos.setY(i,Math.sin(x*3.2+pt*1.8)*0.022+Math.sin(z*2.6+pt*1.3)*0.018+Math.sin((x-z)*2.1+pt*2.1)*0.012+Math.cos(x*1.5+z*1.5+pt*0.9)*0.008);}
+                    pos.needsUpdate=true;water.geometry.computeVertexNormals();
+                    water.material.opacity=0.84+Math.sin(pt*1.4)*0.06;
+                    water.material.emissiveIntensity=0.25+Math.sin(pt*2.2)*0.12;
+                }
+                if(caustic&&caustic.material){
+                    caustic.material.emissiveIntensity=0.70+Math.sin(pt*3.5+0.8)*0.30;
+                    caustic.material.opacity=0.22+Math.sin(pt*4.1+1.2)*0.12;
+                    caustic.position.x+=Math.sin(pt*0.7)*0.0004;
+                    caustic.position.z+=Math.cos(pt*0.5)*0.0004;
+                }
             });
         }
         renderer.render(scene,camera);

@@ -1691,7 +1691,7 @@
         const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
         const poolW   = Math.min(rw * 0.62, 7.5);
         const poolD   = Math.min(rd * 0.62, 12.0);
-        const poolDepthVis = 0.55;   // visual depth of basin walls
+       const poolDepthVis = 0.45;   // visual depth of basin walls — kept above floor slab
         const tileSize = 0.55;
 
         // ── Style-aware palette ──────────────────────────────────────
@@ -1711,31 +1711,48 @@
             mat(deckCol, 0.35, currentStyle === 'luxury' ? 0.2 : 0.05),
             cx, fl + 0.02, cz, 0, 0, 'furniture');
 
-        // Deck tile grout lines
+       // Deck tile grout lines — split each line into two segments around the pool opening
+        const poolHalfW = poolW / 2, poolHalfD = poolD / 2;
+        const gy = fl + 0.038;
+
+        // Vertical grout lines (run along Z axis) — split into top & bottom deck segments
         for (let i = -Math.floor(rw / tileSize / 2); i <= Math.floor(rw / tileSize / 2); i++) {
-            box(0.010, 0.05, rd - 0.08, groutCol, cx + i * tileSize, fl + 0.038, cz, 0.2, 'furniture');
-        }
-        for (let j = -Math.floor(rd / tileSize / 2); j <= Math.floor(rd / tileSize / 2); j++) {
-            box(rw - 0.08, 0.05, 0.010, groutCol, cx, fl + 0.038, cz + j * tileSize, 0.2, 'furniture');
+            const lx = cx + i * tileSize;
+            if (lx > cx - poolHalfW && lx < cx + poolHalfW) {
+                // Line passes through pool X range — draw only outside pool Z range
+                const topLen = (rd / 2) - poolHalfD - 0.04;
+                const botLen = (rd / 2) - poolHalfD - 0.04;
+                if (topLen > 0.05) box(0.010, 0.05, topLen, groutCol, lx, gy, cz - poolHalfD - topLen / 2, 0.2, 'furniture');
+                if (botLen > 0.05) box(0.010, 0.05, botLen, groutCol, lx, gy, cz + poolHalfD + botLen / 2, 0.2, 'furniture');
+            } else {
+                box(0.010, 0.05, rd - 0.08, groutCol, lx, gy, cz, 0.2, 'furniture');
+            }
         }
 
-        // ── Pool basin — tiled rectangular hollow ────────────────────
-        const pfl = fl + 0.04;   // top-of-deck surface Y
+        // Horizontal grout lines (run along X axis) — split into left & right deck segments
+        for (let j = -Math.floor(rd / tileSize / 2); j <= Math.floor(rd / tileSize / 2); j++) {
+            const lz = cz + j * tileSize;
+            if (lz > cz - poolHalfD && lz < cz + poolHalfD) {
+                // Line passes through pool Z range — draw only outside pool X range
+                const leftLen = (rw / 2) - poolHalfW - 0.04;
+                const rightLen = (rw / 2) - poolHalfW - 0.04;
+                if (leftLen > 0.05) box(leftLen, 0.05, 0.010, groutCol, cx - poolHalfW - leftLen / 2, gy, lz, 0.2, 'furniture');
+                if (rightLen > 0.05) box(rightLen, 0.05, 0.010, groutCol, cx + poolHalfW + rightLen / 2, gy, lz, 0.2, 'furniture');
+            } else {
+                box(rw - 0.08, 0.05, 0.010, groutCol, cx, gy, lz, 0.2, 'furniture');
+            }
+        }
+
+       // ── Pool basin — tiled rectangular hollow ────────────────────
+        // pfl is the water-level surface; basin is raised so the bottom
+        // sits flush with the room floor (fl) — never piercing through it.
+        const pfl = fl + poolDepthVis - 0.03;   // top-of-deck surface Y
 
         // Basin floor (pool bottom, tiled)
         addMesh(new THREE.BoxGeometry(poolW - 0.12, 0.06, poolD - 0.12),
             mat(tileCol, 0.25, 0.15), cx, pfl - poolDepthVis + 0.03, cz, 0, 0, 'furniture');
 
-        // Basin tile grout grid on pool floor
-        const ptile = 0.45;
-        for (let i = -Math.floor(poolW / ptile / 2); i <= Math.floor(poolW / ptile / 2); i++) {
-            box(0.012, 0.065, poolD - 0.14, groutCol,
-                cx + i * ptile, pfl - poolDepthVis + 0.068, cz, 0.1, 'furniture');
-        }
-        for (let j = -Math.floor(poolD / ptile / 2); j <= Math.floor(poolD / ptile / 2); j++) {
-            box(poolW - 0.14, 0.065, 0.012, groutCol,
-                cx, pfl - poolDepthVis + 0.068, cz + j * ptile, 0.1, 'furniture');
-        }
+       // Basin tile grout grid removed — grout lines are not visible through pool water
 
         // Basin walls (4 sides — tiled)
         const bwMat = mat(tileCol, 0.22, 0.12);
@@ -1774,17 +1791,17 @@
                            currentStyle === 'traditional' ? 0x007799 :
                            currentStyle === 'minimalist'  ? 0x1199bb : 0x0077aa;
 
-        const waterMat = new THREE.MeshPhysicalMaterial({
+       const waterMat = new THREE.MeshPhysicalMaterial({
             color:        waterColor,
-            emissive:     0x003355,          // dark blue self-glow so it never goes white
-            emissiveIntensity: 0.30,
+            emissive:     new THREE.Color(waterColor).multiplyScalar(0.45),
+            emissiveIntensity: 0.55,         // stronger self-glow so top-down view shows real color
             transparent:  true,
-            opacity:      0.88,              // high opacity — pool water is opaque
-            roughness:    0.04,              // near-mirror reflections
+            opacity:      0.92,
+            roughness:    0.08,              // slight roughness kills whitewash reflections
             metalness:    0.0,
-            transmission: 0.06,             // very slight transmission (not a window)
+            transmission: 0.0,               // no transmission — opaque pool water
             ior:          1.33,
-            reflectivity: 0.85,
+            reflectivity: 0.30,              // reduced — was over-reflecting ceiling as white/grey
             side:         THREE.DoubleSide,
             depthWrite:   false,
         });
@@ -1793,7 +1810,7 @@
             waterMat
         );
         waterSurface.rotation.x = -Math.PI / 2;
-        waterSurface.position.set(cx, pfl - 0.02, cz);
+        waterSurface.position.set(cx, pfl - 0.04, cz);  // flush just below deck surface
         waterSurface.userData.poolWater = true;
         scene.add(waterSurface); groups.furniture.push(waterSurface);
 
@@ -1829,7 +1846,7 @@
             causticMat
         );
         caustic.rotation.x = -Math.PI / 2;
-        caustic.position.set(cx, pfl - 0.01, cz);     // sits just above water
+        caustic.position.set(cx, pfl - 0.03, cz);     // sits just above water
         caustic.userData.poolCaustic = true;
         scene.add(caustic); groups.furniture.push(caustic);
 
