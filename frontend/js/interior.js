@@ -546,7 +546,7 @@
             addWallSeg(WT, floorH, d + WT, ox + HW, wy, cz);
         });
         
-        // ── For each entrance: fill the wall opening with a glass facade ──
+        // ── For each entrance: fill the LEFT side wall with a glass facade ──
         const entranceGlassMat = new THREE.MeshStandardMaterial({
             color: 0x88ddf0, transparent: true, opacity: 0.28,
             roughness: 0.04, metalness: 0.15, side: THREE.DoubleSide
@@ -555,45 +555,28 @@
                                    currentStyle === 'traditional' ? 0x5c3317 : 0x222222;
         const entranceFrameMat = new THREE.MeshStandardMaterial({color: entranceFrameColor, roughness: 0.4, metalness: 0.3});
         balconies.filter(r => r.type === 'entrance').forEach(r => {
-            const THRESH = 0.35;
-            const onFront = r.z < THRESH;
-            const onBack  = r.z + r.depth > HD - THRESH;
-            const onLeft  = r.x < THRESH;
-            const onRight = r.x + r.width > HW - THRESH;
-            if (!onFront && !onBack && !onLeft && !onRight) return;
-
-            const isH = onFront || onBack; // horizontal span (along X)
-            const span = isH ? r.width : r.depth;
-            const wallX = isH ? (ox + r.x + r.width / 2) : (onLeft ? ox : ox + HW);
-            const wallZ = isH ? (onFront ? oz : oz + HD)  : (oz + r.z + r.depth / 2);
-            const gW = isH ? span : WT + 0.02;
-            const gD = isH ? WT + 0.02 : span;
+            // Glass goes on the left side wall of the entrance room (x = ox + r.x)
+            const span = r.depth;
+            const wallX = ox + r.x;                    // left edge of the entrance room
+            const wallZ = oz + r.z + r.depth / 2;      // center along depth
             const panelH = floorH;
 
-            // Full-height glass fill
-            const gFill = new THREE.Mesh(new THREE.BoxGeometry(gW, panelH, gD), entranceGlassMat);
+            // Full-height glass fill on left side wall
+            const gFill = new THREE.Mesh(new THREE.BoxGeometry(WT + 0.02, panelH, span), entranceGlassMat);
             gFill.position.set(wallX, baseY + panelH / 2, wallZ);
             scene.add(gFill); groups.walls.push(gFill);
 
-            // Thin vertical frame posts (left, center, right)
-            const postW = isH ? 0.06 : span;
-            const postD = isH ? span : 0.06;
+            // Vertical frame posts (front, center, back along depth)
             [-span / 2, 0, span / 2].forEach(offset => {
-                const px = isH ? wallX + offset : wallX;
-                const pz = isH ? wallZ : wallZ + offset;
                 const post = new THREE.Mesh(new THREE.BoxGeometry(
-                    isH ? 0.06 : WT + 0.04,
-                    panelH, 
-                    isH ? WT + 0.04 : 0.06
+                    WT + 0.04, panelH, 0.06
                 ), entranceFrameMat);
-                post.position.set(px, baseY + panelH / 2, pz);
+                post.position.set(wallX, baseY + panelH / 2, wallZ + offset);
                 scene.add(post); groups.walls.push(post);
             });
             // Horizontal top rail
             const topRail = new THREE.Mesh(new THREE.BoxGeometry(
-                isH ? span + 0.06 : WT + 0.04,
-                0.07,
-                isH ? WT + 0.04 : span + 0.06
+                WT + 0.04, 0.07, span + 0.06
             ), entranceFrameMat);
             topRail.position.set(wallX, baseY + panelH - 0.04, wallZ);
             scene.add(topRail); groups.walls.push(topRail);
@@ -1833,33 +1816,307 @@
     gLight.position.set(vgX - 0.4, vgY2 + 0.3, vgZ);
     scene.add(gLight);
 
-    // ── Floating staircase (modern minimalist) ────────────────────────
-    const stairW2 = Math.min(rw * 0.38, 1.5);
-    const stairCount = 5; // partial run visible in entrance
-    const stepH2 = 0.18, stepD2 = 0.32;
-    const startX2 = cx + rw * 0.08;
-    const startZ2 = cz + rd * 0.05;
-    const stepCol = currentStyle === 'luxury'      ? 0xd4b896 :
-                    currentStyle === 'traditional'  ? 0x8b5c2a :
-                    currentStyle === 'minimalist'   ? 0xeeeeee : 0x7a8fa6;
-    const railCol2 = currentStyle === 'luxury' ? 0xc9a84c :
-                     currentStyle === 'minimalist' ? 0x888888 : 0x4a6fa5;
-    for (let i = 0; i < stairCount; i++) {
-        // Floating tread — cantilevered look (no risers)
-        box(stairW2, stepH2 * 0.22, stepD2 - 0.02, stepCol,
-            startX2, fl + (i + 1) * stepH2, startZ2 + i * stepD2, 0.35, 'furniture');
-        // Thin riser gap (dark) for floating effect
-        box(stairW2, stepH2 * 0.75, 0.01, 0x111111,
-            startX2, fl + (i + 0.5) * stepH2, startZ2 + i * stepD2, 0.9, 'furniture');
-    }
-    // Stainless cable railing
-    const railH2 = 0.95;
-    box(0.055, railH2 + stairCount * stepH2 * 0.75, 0.055, railCol2,
-        startX2 - stairW2 / 2 - 0.025, fl + (railH2 + stairCount * stepH2 * 0.75) / 2, startZ2 + stairCount * stepD2 * 0.45, 0.5, 'furniture');
-    for (let i = 0; i <= stairCount; i++) {
-        box(stairW2 + 0.1, 0.025, 0.025, railCol2,
-            startX2, fl + (i + 1) * stepH2 + railH2 * (i / stairCount), startZ2 + i * stepD2, 0.4, 'furniture');
-    }
+    // ── Foyer Fountain (3 variants by style) ──────────────────────────
+    // modern/minimalist → Variant A: central round tiered fountain
+    // luxury            → Variant B: wall-mounted water feature
+    // traditional       → Variant C: corner fountain with plants
+    (function buildFountain() {
+        // ── Palette ───────────────────────────────────────────────────
+        const stoneCol = currentStyle === 'luxury'      ? 0x1e1a18 :
+                         currentStyle === 'traditional' ? 0xb8a880 :
+                         currentStyle === 'minimalist'  ? 0xe0e0e0 : 0x7a8fa0;
+        const rimCol   = currentStyle === 'luxury'      ? 0xc9a84c :
+                         currentStyle === 'traditional' ? 0xd4b870 :
+                         currentStyle === 'minimalist'  ? 0xbbbbbb : 0x5c7a90;
+
+        const stoneMat = new THREE.MeshStandardMaterial({ color: stoneCol, roughness: 0.88, metalness: 0.05 });
+        const rimMat   = new THREE.MeshStandardMaterial({ color: rimCol,   roughness: 0.30, metalness: 0.55 });
+        const waterMat = new THREE.MeshPhysicalMaterial({
+            color: 0x55bbee, transparent: true, opacity: 0.70,
+            roughness: 0.0, metalness: 0.0,
+            transmission: 0.50, thickness: 0.25,
+            reflectivity: 0.95, ior: 1.33,
+            side: THREE.DoubleSide
+        });
+        const sprayMat = new THREE.PointsMaterial({
+            color: 0xaaddff, size: 0.045, transparent: true,
+            opacity: 0.75, sizeAttenuation: true, depthWrite: false
+        });
+
+        // ── Shared: animated particle spray helper ────────────────────
+        // Returns a THREE.Points object; its userData drives the animate loop
+        function makeSpray(count, ox, oy, oz, spreadR, upSpeed) {
+            const geo = new THREE.BufferGeometry();
+            const pos  = new Float32Array(count * 3);
+            const life = new Float32Array(count);   // 0-1 normalised lifetime
+            for (let i = 0; i < count; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = Math.random() * spreadR * 0.3;
+                pos[i*3]   = ox + Math.cos(a) * r;
+                pos[i*3+1] = oy + Math.random() * 0.05;
+                pos[i*3+2] = oz + Math.sin(a) * r;
+                life[i] = Math.random();
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const pts = new THREE.Points(geo, sprayMat.clone());
+            pts.userData.fountain = { ox, oy, oz, spreadR, upSpeed, life };
+            scene.add(pts);
+            groups.furniture.push(pts);
+            return pts;
+        }
+
+        // Fountain position — same spot the stairs occupied
+        const fx = cx + rw * 0.08;
+        const fz = cz + rd * 0.05;
+        const fy = fl;
+
+        // ════════════════════════════════════════════════════════════
+        // VARIANT A — Central round tiered fountain (modern / minimalist)
+        // ════════════════════════════════════════════════════════════
+        if (currentStyle === 'modern' || currentStyle === 'minimalist') {
+            const basR = Math.min(rw, rd) * 0.18;   // outer basin radius
+            const basH = 0.22;
+            const col1 = 0x223366, col2 = 0x2255aa;
+
+            // Outer basin — wide low cylinder
+            const basinGeo = new THREE.CylinderGeometry(basR, basR * 1.08, basH, 32);
+            const basin = new THREE.Mesh(basinGeo, stoneMat);
+            basin.position.set(fx, fy + basH / 2, fz);
+            basin.castShadow = true; basin.receiveShadow = true;
+            scene.add(basin); groups.furniture.push(basin);
+
+            // Outer basin rim ring
+            const rimGeo = new THREE.TorusGeometry(basR, 0.04, 8, 32);
+            const rim = new THREE.Mesh(rimGeo, rimMat);
+            rim.rotation.x = Math.PI / 2;
+            rim.position.set(fx, fy + basH, fz);
+            scene.add(rim); groups.furniture.push(rim);
+
+            // Water surface — inside basin
+            const waterGeo = new THREE.CircleGeometry(basR - 0.06, 32);
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.rotation.x = -Math.PI / 2;
+            water.position.set(fx, fy + basH - 0.04, fz);
+            scene.add(water); groups.furniture.push(water);
+            water.userData.waterSurface = true;
+
+            // Central pedestal column
+            const pedH = 0.55;
+            const pedGeo = new THREE.CylinderGeometry(0.08, 0.11, pedH, 16);
+            const ped = new THREE.Mesh(pedGeo, stoneMat);
+            ped.position.set(fx, fy + basH + pedH / 2, fz);
+            scene.add(ped); groups.furniture.push(ped);
+
+            // Upper small bowl
+            const bowlH = 0.14;
+            const bowlGeo = new THREE.CylinderGeometry(basR * 0.42, basR * 0.38, bowlH, 24);
+            const bowl = new THREE.Mesh(bowlGeo, stoneMat);
+            bowl.position.set(fx, fy + basH + pedH + bowlH / 2, fz);
+            scene.add(bowl); groups.furniture.push(bowl);
+
+            // Upper rim
+            const rimTop = new THREE.Mesh(new THREE.TorusGeometry(basR * 0.42, 0.025, 8, 24), rimMat);
+            rimTop.rotation.x = Math.PI / 2;
+            rimTop.position.set(fx, fy + basH + pedH + bowlH, fz);
+            scene.add(rimTop); groups.furniture.push(rimTop);
+
+            // Upper water surface
+            const waterTop = new THREE.Mesh(new THREE.CircleGeometry(basR * 0.40, 24), waterMat.clone());
+            waterTop.rotation.x = -Math.PI / 2;
+            waterTop.position.set(fx, fy + basH + pedH + bowlH - 0.03, fz);
+            scene.add(waterTop); groups.furniture.push(waterTop);
+
+            // Cascading water curtain (thin cylinder shell, open top/bottom)
+            const curtainH = pedH - 0.02;
+            const curtainGeo = new THREE.CylinderGeometry(basR * 0.44, basR * 0.44, curtainH, 24, 1, true);
+            const curtain = new THREE.Mesh(curtainGeo, new THREE.MeshPhysicalMaterial({
+                color: 0x88ccff, transparent: true, opacity: 0.22,
+                roughness: 0.0, side: THREE.DoubleSide, depthWrite: false
+            }));
+            curtain.position.set(fx, fy + basH + curtainH / 2, fz);
+            scene.add(curtain); groups.furniture.push(curtain);
+            curtain.userData.waterCurtain = true;
+
+            // Spray particles from upper bowl
+            makeSpray(80, fx, fy + basH + pedH + bowlH, fz, basR * 0.38, 0.022);
+
+            // Underwater glow
+            const wLight = new THREE.PointLight(0x44aaff, 0.9, basR * 3.5, 2);
+            wLight.position.set(fx, fy + basH - 0.08, fz);
+            wLight.userData.baseIntensity = 0.9;
+            scene.add(wLight);
+
+            // Soft rim halo
+            const halo = new THREE.PointLight(0x99ddff, 0.5, basR * 5, 2);
+            halo.position.set(fx, fy + basH + pedH * 0.8, fz);
+            halo.userData.baseIntensity = 0.5;
+            scene.add(halo);
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // VARIANT B — Wall-mounted water feature (luxury)
+        // ════════════════════════════════════════════════════════════
+        else if (currentStyle === 'luxury') {
+            // Positioned against the back interior wall of the entrance
+            const wx = fx;
+            const wz = cz + rd / 2 - 0.18;  // back wall
+            const panW = Math.min(rw * 0.42, 1.6);
+            const panH = Math.min(WALL_H * 0.62, 1.7);
+            const trayH = 0.18;
+
+            // Dark stone backing panel
+            const backMat = new THREE.MeshStandardMaterial({ color: 0x0d0d10, roughness: 0.75, metalness: 0.2 });
+            const back = new THREE.Mesh(new THREE.BoxGeometry(panW, panH, 0.09), backMat);
+            back.position.set(wx, fy + panH / 2 + 0.12, wz);
+            back.castShadow = true;
+            scene.add(back); groups.furniture.push(back);
+
+            // Decorative metal frame
+            [[panW + 0.06, 0.05, 0.12, wx, fy + panH + 0.15, wz],   // top bar
+             [panW + 0.06, 0.05, 0.12, wx, fy + 0.09, wz],           // bottom bar
+             [0.05, panH + 0.10, 0.12, wx - panW/2, fy + panH/2 + 0.12, wz],  // left post
+             [0.05, panH + 0.10, 0.12, wx + panW/2, fy + panH/2 + 0.12, wz],  // right post
+            ].forEach(([w,h,d,x,y,z]) => {
+                const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), rimMat);
+                m.position.set(x,y,z);
+                scene.add(m); groups.furniture.push(m);
+            });
+
+            // Water sheet — thin plane covering face of panel
+            const sheetMat = new THREE.MeshPhysicalMaterial({
+                color: 0x66ccee, transparent: true, opacity: 0.32,
+                roughness: 0.0, metalness: 0.0,
+                transmission: 0.7, ior: 1.33,
+                side: THREE.DoubleSide, depthWrite: false
+            });
+            const sheet = new THREE.Mesh(new THREE.PlaneGeometry(panW - 0.04, panH - 0.04, 8, 16), sheetMat);
+            sheet.position.set(wx, fy + panH / 2 + 0.12, wz + 0.05);
+            sheet.userData.waterSheet = true;
+            scene.add(sheet); groups.furniture.push(sheet);
+
+            // Collection trough at the base
+            const trough = new THREE.Mesh(new THREE.BoxGeometry(panW + 0.08, trayH, 0.28), stoneMat);
+            trough.position.set(wx, fy + trayH / 2, wz - 0.08);
+            scene.add(trough); groups.furniture.push(trough);
+
+            // Water in trough
+            const tw = new THREE.Mesh(new THREE.BoxGeometry(panW, 0.02, 0.22), waterMat.clone());
+            tw.position.set(wx, fy + trayH - 0.01, wz - 0.05);
+            scene.add(tw); groups.furniture.push(tw);
+
+            // Fine mist particles at base of sheet
+            makeSpray(60, wx, fy + trayH, wz - 0.06, panW * 0.45, 0.010);
+
+            // Backlit glow behind water sheet
+            const wl = new THREE.PointLight(0x2255ff, 1.1, panW * 3, 2);
+            wl.position.set(wx, fy + panH * 0.55, wz - 0.12);
+            wl.userData.baseIntensity = 1.1;
+            scene.add(wl);
+
+            // Top accent strip light
+            const strip = new THREE.PointLight(0x99eeff, 0.6, panW * 2, 2);
+            strip.position.set(wx, fy + panH + 0.1, wz);
+            strip.userData.baseIntensity = 0.6;
+            scene.add(strip);
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // VARIANT C — Corner fountain with plants (traditional)
+        // ════════════════════════════════════════════════════════════
+        else {
+            // Sits in one corner of the entrance room
+            const cr = Math.min(rw, rd) * 0.16;
+            const cornerX = fx - rw * 0.12;
+            const cornerZ = fz - rd * 0.12;
+
+            // Corner quarter-circle basin
+            const basinShape = new THREE.Shape();
+            basinShape.absarc(0, 0, cr, 0, Math.PI / 2, false);
+            basinShape.lineTo(0, 0);
+            const basinGeo2 = new THREE.ExtrudeGeometry(basinShape, {
+                depth: 0.20, bevelEnabled: false
+            });
+            const cornerBasin = new THREE.Mesh(basinGeo2, stoneMat);
+            cornerBasin.rotation.x = -Math.PI / 2;
+            cornerBasin.position.set(cornerX - cr, fy, cornerZ - cr);
+            cornerBasin.castShadow = true; cornerBasin.receiveShadow = true;
+            scene.add(cornerBasin); groups.furniture.push(cornerBasin);
+
+            // Water pool surface (quarter circle)
+            const poolShape = new THREE.Shape();
+            poolShape.absarc(0, 0, cr - 0.06, 0, Math.PI / 2, false);
+            poolShape.lineTo(0, 0);
+            const poolGeo = new THREE.ShapeGeometry(poolShape);
+            const pool = new THREE.Mesh(poolGeo, waterMat.clone());
+            pool.rotation.x = -Math.PI / 2;
+            pool.position.set(cornerX - cr, fy + 0.19, cornerZ - cr);
+            scene.add(pool); groups.furniture.push(pool);
+
+            // Central spout column in corner
+            const spoutCol = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.10, 0.55, 12), stoneMat);
+            spoutCol.position.set(cornerX, fy + 0.275, cornerZ);
+            scene.add(spoutCol); groups.furniture.push(spoutCol);
+
+            // Spout nozzle
+            const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.09, 8), rimMat);
+            nozzle.position.set(cornerX, fy + 0.60, cornerZ);
+            scene.add(nozzle); groups.furniture.push(nozzle);
+
+            // Cascading water arc (thin torus segment)
+            const arcMat = new THREE.MeshPhysicalMaterial({
+                color: 0x88ddff, transparent: true, opacity: 0.38,
+                roughness: 0.0, depthWrite: false, side: THREE.DoubleSide
+            });
+            const arc = new THREE.Mesh(new THREE.TorusGeometry(cr * 0.5, 0.025, 8, 24, Math.PI * 0.6), arcMat);
+            arc.position.set(cornerX - cr * 0.3, fy + 0.42, cornerZ - cr * 0.3);
+            arc.rotation.set(Math.PI * 0.35, Math.PI * 0.25, 0);
+            scene.add(arc); groups.furniture.push(arc);
+
+            // Spray from nozzle tip
+            makeSpray(55, cornerX, fy + 0.65, cornerZ, cr * 0.55, 0.018);
+
+            // ── Flanking potted plants (corner variant) ───────────────
+            const potCol2 = 0xc87941;
+            [[-cr * 0.9, cr * 0.15], [cr * 0.15, -cr * 0.9]].forEach(([dx, dz]) => {
+                const px2 = cornerX + dx, pz2 = cornerZ + dz;
+                // Pot
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.10, 0.32, 12),
+                    new THREE.MeshStandardMaterial({ color: potCol2, roughness: 0.75 }));
+                pot.position.set(px2, fy + 0.16, pz2);
+                scene.add(pot); groups.furniture.push(pot);
+                // Soil
+                const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12),
+                    new THREE.MeshStandardMaterial({ color: 0x2a1a08, roughness: 0.98 }));
+                soil.position.set(px2, fy + 0.34, pz2);
+                scene.add(soil); groups.furniture.push(soil);
+                // Trunk
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.70, 6),
+                    new THREE.MeshStandardMaterial({ color: 0x3b2008, roughness: 0.9 }));
+                trunk.position.set(px2, fy + 0.71, pz2);
+                scene.add(trunk); groups.furniture.push(trunk);
+                // Foliage tiers
+                [[0.22, 0.18, 0.32, 0x2a7a1a], [0.16, 0.13, 0.55, 0x1d6010], [0.10, 0.07, 0.80, 0x246615]].forEach(([rt, rb, yy, col]) => {
+                    const f = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, 0.22, 10),
+                        new THREE.MeshStandardMaterial({ color: col, roughness: 0.85 }));
+                    f.position.set(px2, fy + yy, pz2);
+                    scene.add(f); groups.furniture.push(f);
+                });
+            });
+
+            // Warm water glow
+            const wl3 = new THREE.PointLight(0x44aaff, 0.7, cr * 5, 2);
+            wl3.position.set(cornerX - cr * 0.5, fy + 0.25, cornerZ - cr * 0.5);
+            wl3.userData.baseIntensity = 0.7;
+            scene.add(wl3);
+        }
+
+        // ── Register fountain animation (runs every frame in animate()) ──
+        if (!window._fountainMeshes) window._fountainMeshes = [];
+        scene.traverse(obj => {
+            if (obj.isPoints && obj.userData.fountain) window._fountainMeshes.push(obj);
+            if (obj.isMesh  && (obj.userData.waterSurface || obj.userData.waterSheet || obj.userData.waterCurtain)) window._fountainMeshes.push(obj);
+        });
+    })(); // end buildFountain
 
     // ── Welcome mat ──────────────────────────────────────────────────
     const matCol = currentStyle === 'luxury' ? 0x2a1a08 : 0x4a3a28;
@@ -1962,6 +2219,60 @@
                 c.intensity = c.userData.baseIntensity + Math.sin(Date.now() * 0.0008 * (1 + i * 0.2) + i) * 0.04;
             }
         });
+
+        // ── Fountain animation ─────────────────────────────────────────
+        const t = Date.now() * 0.001;
+        if (window._fountainMeshes) {
+            window._fountainMeshes.forEach(obj => {
+                // Animated water spray particles
+                if (obj.isPoints && obj.userData.fountain) {
+                    const fd = obj.userData.fountain;
+                    if (!fd.life) {
+                        fd.life = new Float32Array(obj.geometry.attributes.position.count);
+                        for (let i = 0; i < fd.life.length; i++) fd.life[i] = Math.random();
+                    }
+                    const pos = obj.geometry.attributes.position.array;
+                    const count = pos.length / 3;
+                    for (let i = 0; i < count; i++) {
+                        fd.life[i] += 0.018;
+                        if (fd.life[i] > 1.0) {
+                            const a = Math.random() * Math.PI * 2;
+                            const r = Math.random() * fd.spreadR * 0.25;
+                            pos[i*3]   = fd.ox + Math.cos(a) * r;
+                            pos[i*3+1] = fd.oy;
+                            pos[i*3+2] = fd.oz + Math.sin(a) * r;
+                            fd.life[i] = 0;
+                        } else {
+                            const lf = fd.life[i];
+                            const dx = pos[i*3]   - fd.ox;
+                            const dz = pos[i*3+2] - fd.oz;
+                            pos[i*3+1] = fd.oy + lf * fd.upSpeed * 28 - lf * lf * 14;
+                            const dr = 0.004 * fd.spreadR;
+                            const len = Math.sqrt(dx*dx + dz*dz) || 0.001;
+                            pos[i*3]   += dx / len * dr;
+                            pos[i*3+2] += dz / len * dr;
+                        }
+                    }
+                    obj.geometry.attributes.position.needsUpdate = true;
+                    obj.material.opacity = 0.60 + Math.sin(t * 1.8) * 0.12;
+                }
+                // Rippling water surface pulse
+                if (obj.isMesh && obj.userData.waterSurface) {
+                    obj.material.opacity = 0.60 + Math.sin(t * 2.2) * 0.10;
+                    obj.position.y += Math.sin(t * 3.5) * 0.0002;
+                }
+                // Wall water sheet shimmer
+                if (obj.isMesh && obj.userData.waterSheet) {
+                    obj.material.opacity = 0.28 + Math.sin(t * 2.8 + 1.2) * 0.07;
+                    obj.scale.y = 1.0 + Math.sin(t * 1.4) * 0.008;
+                }
+                // Curtain shimmer + slow rotation
+                if (obj.isMesh && obj.userData.waterCurtain) {
+                    obj.material.opacity = 0.18 + Math.sin(t * 3.1) * 0.06;
+                    obj.rotation.y += 0.003;
+                }
+            });
+        }
 
         renderer.render(scene, camera);
 
