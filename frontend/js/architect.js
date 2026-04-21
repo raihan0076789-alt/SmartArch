@@ -571,7 +571,7 @@
 
   function addRoomOfType(type){
     const floor=projectData.floors[activeFloorIdx];
-   const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2},hallway:{w:6,d:2},entrance:{w:5,d:4}};
+   const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2},hallway:{w:6,d:2},entrance:{w:5,d:4},swimming_pool:{w:8,d:14}};
     const dim=defaults[type]||{w:4,d:4};
     let x=0,z=0,placed=false,tries=0;
     while(tries++<80){
@@ -580,7 +580,7 @@
       if(!getOverlappingRooms(x,z,dim.w,dim.d,null).length){placed=true;break;}
     }
     if(!placed){showToast('⚠️ No free space on this floor — resize the canvas or remove a room','error');return;}
-    const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage',balcony:'Balcony',hallway:'Hallway',entrance:'Entrance Area'};
+    const names={living:'Living Room',bedroom:'Bedroom',bathroom:'Bathroom',kitchen:'Kitchen',dining:'Dining Room',office:'Office',garage:'Garage',balcony:'Balcony',hallway:'Hallway',entrance:'Entrance Area',swimming_pool:'Indoor Swimming Pool'};
     const room={name:names[type]||type,type,width:dim.w,depth:dim.d,x,z,height:floor.height||2.7,doors:[],windows:[]};
     floor.rooms.push(room);pushUndoState();selectedRoom=room;renderRooms();showRoomProperties(room);updateInfoPanel();drawFloorPlan();markUnsaved();
   }
@@ -914,7 +914,7 @@
 
   function showRoomProperties(room){
     const container=el('roomProperties');if(!container)return;
-    const typeOpts=['living','bedroom','bathroom','kitchen','dining','office','garage','hallway','entrance','other'].map(t=>`<option value="${t}" ${room.type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
+    const typeOpts=['living','bedroom','bathroom','kitchen','dining','office','garage','hallway','entrance','swimming_pool','other'].map(t=>`<option value="${t}" ${room.type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
     container.innerHTML=`
       <div class="form-group"><label>Name</label><input type="text" value="${room.name}" onchange="updateRoomProp('name',this.value)"></div>
       <div class="form-group"><label>Type</label><select onchange="updateRoomProp('type',this.value)">${typeOpts}</select></div>

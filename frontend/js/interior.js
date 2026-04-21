@@ -66,6 +66,7 @@
         balcony:   { hex: 0x64c8ff, css: '#64c8ff', floor: 0xb0c8d8 },
         hallway:   { hex: 0xc8a96e, css: '#c8a96e', floor: 0xc8a07a },
         entrance:  { hex: 0xd4a96e, css: '#d4a96e', floor: 0xc8b090 },
+        swimming_pool: { hex: 0x00c8f0, css: '#00c8f0', floor: 0x1a9ec4 },
     };
     const WALL_H = 2.7;
     const WT = 0.14; // wall thickness
@@ -124,6 +125,8 @@
         if (renderer) { renderer.dispose(); }
         // Stop any running lift animations from previous scene
         if (window._liftAnimCleanups) { window._liftAnimCleanups.forEach(fn => fn()); window._liftAnimCleanups = []; }
+        window._poolMeshes = [];
+        window._poolAnimRegistered = false;
 
         // Reset groups
         groups = { furniture: [], roof: [], walls: [], labels: [] };
@@ -837,6 +840,7 @@
             hallway:   furnishHallway,
             entrance:  furnishEntrance,
             lift:      furnishLift,
+            swimming_pool: furnishSwimmingPool,
         }[room.type];
 
         if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
@@ -1680,6 +1684,463 @@
         // ── Fire extinguisher (right-rear corner) ─────────────────────
         cyl(0.055, 0.05, 0.48, 10, 0xcc1100, cx + rw/2 - 0.18, fl + 0.84, cz + rd/2 - 0.18, 'furniture');
         cyl(0.030, 0.03, 0.08,  8, 0x888888, cx + rw/2 - 0.18, fl + 1.10, cz + rd/2 - 0.18, 'furniture');
+    }
+
+    // ── Indoor Swimming Pool ──────────────────────────────────
+    function furnishSwimmingPool(cx, cz, fl, rw, rd, room, baseY) {
+        const T = STYLE_THEMES[currentStyle] || STYLE_THEMES.modern;
+        const poolW   = Math.min(rw * 0.62, 7.5);
+        const poolD   = Math.min(rd * 0.62, 12.0);
+        const poolDepthVis = 0.55;   // visual depth of basin walls
+        const tileSize = 0.55;
+
+        // ── Style-aware palette ──────────────────────────────────────
+       const deckCol   = currentStyle === 'luxury'      ? 0xd4c9b0 :
+                          currentStyle === 'traditional' ? 0xc8b88a :
+                          currentStyle === 'minimalist'  ? 0xd8e8ee : 0xa8bcc8;
+        const basinWall = currentStyle === 'luxury'      ? 0x0a3a58 :
+                          currentStyle === 'minimalist'  ? 0x1a6a8a : 0x0a3a58;
+        const tileCol   = currentStyle === 'luxury'      ? 0x0a5a82 :
+                          currentStyle === 'minimalist'  ? 0x1890b8 : 0x0d7aaa;
+        const groutCol  = 0xddeeff;
+        const ladderMat = mat(currentStyle === 'luxury' ? 0xd4a84c : 0xe0e0e0, 0.1, 0.9);
+        const stepCol   = currentStyle === 'traditional' ? 0xc8aa80 : 0xd0dce8;
+
+        // ── Polished stone deck (fills entire room floor) ────────────
+        addMesh(new THREE.BoxGeometry(rw - 0.05, 0.04, rd - 0.05),
+            mat(deckCol, 0.35, currentStyle === 'luxury' ? 0.2 : 0.05),
+            cx, fl + 0.02, cz, 0, 0, 'furniture');
+
+        // Deck tile grout lines
+        for (let i = -Math.floor(rw / tileSize / 2); i <= Math.floor(rw / tileSize / 2); i++) {
+            box(0.010, 0.05, rd - 0.08, groutCol, cx + i * tileSize, fl + 0.038, cz, 0.2, 'furniture');
+        }
+        for (let j = -Math.floor(rd / tileSize / 2); j <= Math.floor(rd / tileSize / 2); j++) {
+            box(rw - 0.08, 0.05, 0.010, groutCol, cx, fl + 0.038, cz + j * tileSize, 0.2, 'furniture');
+        }
+
+        // ── Pool basin — tiled rectangular hollow ────────────────────
+        const pfl = fl + 0.04;   // top-of-deck surface Y
+
+        // Basin floor (pool bottom, tiled)
+        addMesh(new THREE.BoxGeometry(poolW - 0.12, 0.06, poolD - 0.12),
+            mat(tileCol, 0.25, 0.15), cx, pfl - poolDepthVis + 0.03, cz, 0, 0, 'furniture');
+
+        // Basin tile grout grid on pool floor
+        const ptile = 0.45;
+        for (let i = -Math.floor(poolW / ptile / 2); i <= Math.floor(poolW / ptile / 2); i++) {
+            box(0.012, 0.065, poolD - 0.14, groutCol,
+                cx + i * ptile, pfl - poolDepthVis + 0.068, cz, 0.1, 'furniture');
+        }
+        for (let j = -Math.floor(poolD / ptile / 2); j <= Math.floor(poolD / ptile / 2); j++) {
+            box(poolW - 0.14, 0.065, 0.012, groutCol,
+                cx, pfl - poolDepthVis + 0.068, cz + j * ptile, 0.1, 'furniture');
+        }
+
+        // Basin walls (4 sides — tiled)
+        const bwMat = mat(tileCol, 0.22, 0.12);
+        // Front & back walls
+        [cz - poolD / 2, cz + poolD / 2].forEach(wz => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(poolW, poolDepthVis, 0.10), bwMat);
+            m.position.set(cx, pfl - poolDepthVis / 2, wz);
+            m.castShadow = true; scene.add(m); groups.furniture.push(m);
+        });
+        // Left & right walls
+        [cx - poolW / 2, cx + poolW / 2].forEach(wx => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.10, poolDepthVis, poolD), bwMat);
+            m.position.set(wx, pfl - poolDepthVis / 2, cz);
+            m.castShadow = true; scene.add(m); groups.furniture.push(m);
+        });
+
+        // Coping (pool edge rim — polished stone border)
+        const copingMat = mat(currentStyle === 'luxury' ? 0xe8d8b0 : 0xd0dce8, 0.2, 0.15);
+        // Front & back rim
+        [cz - poolD / 2 - 0.06, cz + poolD / 2 + 0.06].forEach(wz => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(poolW + 0.24, 0.06, 0.22), copingMat);
+            m.position.set(cx, pfl + 0.03, wz); m.castShadow = true;
+            scene.add(m); groups.furniture.push(m);
+        });
+        // Left & right rim
+        [cx - poolW / 2 - 0.06, cx + poolW / 2 + 0.06].forEach(wx => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, poolD + 0.24), copingMat);
+            m.position.set(wx, pfl + 0.03, cz); m.castShadow = true;
+            scene.add(m); groups.furniture.push(m);
+        });
+
+       // ── Reflective rippling water surface ────────────────────────
+        // Deep pool water — strong aqua-teal base so it reads clearly
+        // against any style background (white minimalist, dark modern, etc.)
+        const waterColor = currentStyle === 'luxury'      ? 0x006688 :
+                           currentStyle === 'traditional' ? 0x007799 :
+                           currentStyle === 'minimalist'  ? 0x1199bb : 0x0077aa;
+
+        const waterMat = new THREE.MeshPhysicalMaterial({
+            color:        waterColor,
+            emissive:     0x003355,          // dark blue self-glow so it never goes white
+            emissiveIntensity: 0.30,
+            transparent:  true,
+            opacity:      0.88,              // high opacity — pool water is opaque
+            roughness:    0.04,              // near-mirror reflections
+            metalness:    0.0,
+            transmission: 0.06,             // very slight transmission (not a window)
+            ior:          1.33,
+            reflectivity: 0.85,
+            side:         THREE.DoubleSide,
+            depthWrite:   false,
+        });
+        const waterSurface = new THREE.Mesh(
+            new THREE.PlaneGeometry(poolW - 0.14, poolD - 0.14, 32, 32),
+            waterMat
+        );
+        waterSurface.rotation.x = -Math.PI / 2;
+        waterSurface.position.set(cx, pfl - 0.02, cz);
+        waterSurface.userData.poolWater = true;
+        scene.add(waterSurface); groups.furniture.push(waterSurface);
+
+        // Deep water depth color — darker layer underneath for visual depth
+        const deepMat = new THREE.MeshStandardMaterial({
+            color:   currentStyle === 'luxury' ? 0x003344 : 0x004466,
+            emissive: 0x001122,
+            emissiveIntensity: 0.45,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.FrontSide,
+        });
+        const deepLayer = new THREE.Mesh(
+            new THREE.PlaneGeometry(poolW - 0.22, poolD - 0.22),
+            deepMat
+        );
+        deepLayer.rotation.x = -Math.PI / 2;
+        deepLayer.position.set(cx, pfl - poolDepthVis + 0.07, cz); // at pool bottom
+        scene.add(deepLayer); groups.furniture.push(deepLayer);
+
+        // Caustic shimmer overlay — animated light pattern ON TOP of water
+        const causticMat = new THREE.MeshStandardMaterial({
+            color:             0x55ddff,
+            emissive:          0x00bbdd,
+            emissiveIntensity: 0.85,        // bright so it punches through
+            transparent:       true,
+            opacity:           0.28,
+            side:              THREE.DoubleSide,
+            depthWrite:        false,
+        });
+        const caustic = new THREE.Mesh(
+            new THREE.PlaneGeometry(poolW - 0.20, poolD - 0.20, 20, 20),
+            causticMat
+        );
+        caustic.rotation.x = -Math.PI / 2;
+        caustic.position.set(cx, pfl - 0.01, cz);     // sits just above water
+        caustic.userData.poolCaustic = true;
+        scene.add(caustic); groups.furniture.push(caustic);
+
+        // Lane lines on pool floor (dark stripe alternating)
+        const laneColors = [0x1166aa, 0xee8800];
+        const laneCount  = Math.max(2, Math.floor(poolW / 2.2));
+        for (let li = 0; li < laneCount; li++) {
+            const laneX = cx - poolW / 2 + (li + 0.5) * (poolW / laneCount);
+            const laneMat = new THREE.MeshStandardMaterial({
+                color: laneColors[li % 2],
+                emissive: laneColors[li % 2],
+                emissiveIntensity: 0.15,
+                roughness: 0.3,
+            });
+            const lane = new THREE.Mesh(
+                new THREE.BoxGeometry(0.18, 0.01, poolD - 0.22),
+                laneMat
+            );
+            lane.position.set(laneX, pfl - poolDepthVis + 0.075, cz);
+            scene.add(lane); groups.furniture.push(lane);
+        }
+
+        // ── Glowing underwater lights (wall-mounted + floor) ─────────
+        const uwLightColor = 0x00ccff;
+        const uwLightPositions = [
+            [cx - poolW * 0.28, cz - poolD * 0.35],
+            [cx + poolW * 0.28, cz - poolD * 0.35],
+            [cx - poolW * 0.28, cz + poolD * 0.35],
+            [cx + poolW * 0.28, cz + poolD * 0.35],
+            [cx,                cz],
+            [cx - poolW * 0.28, cz],
+            [cx + poolW * 0.28, cz],
+        ];
+        uwLightPositions.forEach(([lx, lz], i) => {
+            // Strong underwater point lights — they tint the water from below
+            const ul = new THREE.PointLight(uwLightColor, 2.2, Math.max(poolW, poolD) * 1.1, 1.5);
+            ul.position.set(lx, pfl - poolDepthVis + 0.18, lz);
+            ul.userData.baseIntensity = 2.2;
+            scene.add(ul);
+
+            // Emissive lens cap (bright cyan disk on pool wall/floor)
+            const lensMat = new THREE.MeshStandardMaterial({
+                color: 0x00ffff, emissive: 0x00eeff, emissiveIntensity: 4.0,
+                roughness: 0.0, metalness: 0.1,
+            });
+            const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.018, 14), lensMat);
+            lens.position.set(lx, pfl - poolDepthVis + 0.14, lz);
+            scene.add(lens); groups.furniture.push(lens);
+
+            // Glow halo disk around lens (larger, softer)
+            const haloMat = new THREE.MeshStandardMaterial({
+                color: 0x0099dd, emissive: 0x0088cc, emissiveIntensity: 1.8,
+                transparent: true, opacity: 0.45, depthWrite: false,
+            });
+            const halo = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16), haloMat);
+            halo.rotation.x = -Math.PI / 2;
+            halo.position.set(lx, pfl - poolDepthVis + 0.08, lz);
+            scene.add(halo); groups.furniture.push(halo);
+        });
+
+        // Central ambient fill light tinting the whole pool cyan-blue
+        const poolFillLight = new THREE.PointLight(0x0088bb, 1.8, Math.max(poolW, poolD) * 2.5, 1);
+        poolFillLight.position.set(cx, pfl - poolDepthVis * 0.5, cz);
+        poolFillLight.userData.baseIntensity = 1.8;
+        scene.add(poolFillLight);
+
+        // ── Pool ladder (one end, chrome) ────────────────────────────
+        const ladX = cx + poolW / 2 - 0.22;
+        const ladZ = cz + poolD / 2 - 0.35;
+        // Two vertical rails
+        [-0.14, 0.14].forEach(dx => {
+            const rail = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.025, 0.025, poolDepthVis + 0.55, 10),
+                ladderMat
+            );
+            rail.position.set(ladX + dx, pfl - (poolDepthVis + 0.55) / 2 + 0.55, ladZ);
+            rail.castShadow = true;
+            scene.add(rail); groups.furniture.push(rail);
+        });
+        // Rungs
+        for (let r = 0; r < 4; r++) {
+            const rung = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.018, 0.018, 0.30, 8),
+                ladderMat
+            );
+            rung.rotation.z = Math.PI / 2;
+            rung.position.set(ladX, pfl - poolDepthVis + 0.12 + r * 0.14, ladZ);
+            scene.add(rung); groups.furniture.push(rung);
+        }
+        // Curved handrail top arc
+        const arcRail = new THREE.Mesh(
+            new THREE.TorusGeometry(0.14, 0.022, 8, 16, Math.PI),
+            ladderMat
+        );
+        arcRail.rotation.x = Math.PI / 2;
+        arcRail.position.set(ladX, pfl + 0.52, ladZ);
+        arcRail.rotation.z = Math.PI / 2;
+        scene.add(arcRail); groups.furniture.push(arcRail);
+
+        // ── Entry steps (wide shallow steps into the pool) ───────────
+        const stepW = 1.2;
+        for (let s = 0; s < 3; s++) {
+            const sW = stepW - s * 0.18;
+            const sH = 0.12;
+            const sZ = cz - poolD / 2 + s * 0.24 + 0.18;
+            const sY = pfl - s * sH - sH / 2;
+            const stepM = new THREE.Mesh(
+                new THREE.BoxGeometry(sW, sH, 0.22),
+                mat(stepCol, 0.4, 0.12)
+            );
+            stepM.position.set(cx - poolW / 2 + sW / 2 + 0.06, sY, sZ);
+            stepM.castShadow = true; stepM.receiveShadow = true;
+            scene.add(stepM); groups.furniture.push(stepM);
+        }
+
+        // ── Skylight above (glass ceiling panel) ─────────────────────
+        const skyW = poolW * 0.72;
+        const skyD = poolD * 0.55;
+        const skyY = fl + (room.height || 2.7) - 0.05;
+
+        // Frame
+        const skyFrameMat = mat(
+            currentStyle === 'luxury' ? 0xc9a84c : 0x606878, 0.3, 0.65
+        );
+        // Outer frame bars
+        [[skyW + 0.16, 0.10, 0.10, cx, skyY, cz - skyD / 2],
+         [skyW + 0.16, 0.10, 0.10, cx, skyY, cz + skyD / 2],
+         [0.10, 0.10, skyD + 0.12, cx - skyW / 2, skyY, cz],
+         [0.10, 0.10, skyD + 0.12, cx + skyW / 2, skyY, cz],
+        ].forEach(([w, h, d, x, y, z]) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), skyFrameMat);
+            m.position.set(x, y, z); m.castShadow = true;
+            scene.add(m); groups.furniture.push(m);
+        });
+        // Cross dividers (3 × 2 panes)
+        [-skyW / 3, 0, skyW / 3].forEach(dx => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, skyD), skyFrameMat);
+            m.position.set(cx + dx, skyY, cz);
+            scene.add(m); groups.furniture.push(m);
+        });
+        [0].forEach(dz => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(skyW, 0.06, 0.06), skyFrameMat);
+            m.position.set(cx, skyY, cz + dz);
+            scene.add(m); groups.furniture.push(m);
+        });
+
+        // Glass panes
+        const skyGlassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xd0f0ff, transparent: true, opacity: 0.28,
+            roughness: 0.0, metalness: 0.05,
+            transmission: 0.85, ior: 1.5,
+            side: THREE.DoubleSide, depthWrite: false,
+        });
+        const paneW = (skyW - 0.20) / 3;
+        for (let pi = 0; pi < 3; pi++) {
+            const paneMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(paneW, 0.04, skyD - 0.10),
+                skyGlassMat
+            );
+            paneMesh.position.set(cx - skyW / 2 + paneW / 2 + pi * paneW + pi * 0.06 + 0.06, skyY, cz);
+            scene.add(paneMesh); groups.furniture.push(paneMesh);
+        }
+
+        // Sunlight shaft from skylight
+        const skyLight = new THREE.SpotLight(0xfff8f0, 1.4, (room.height || 2.7) * 1.5, Math.PI / 6, 0.5, 1.5);
+        skyLight.position.set(cx, skyY - 0.06, cz);
+        skyLight.target.position.set(cx, fl, cz);
+        scene.add(skyLight.target);
+        scene.add(skyLight);
+
+        // ── Tropical plants (corners) ─────────────────────────────────
+        const corners = [
+            [cx - rw * 0.38, cz - rd * 0.38],
+            [cx + rw * 0.38, cz - rd * 0.38],
+            [cx - rw * 0.38, cz + rd * 0.38],
+            [cx + rw * 0.38, cz + rd * 0.38],
+        ];
+        corners.forEach(([px, pz], i) => {
+            // Pot
+            addMesh(new THREE.CylinderGeometry(0.22, 0.18, 0.38, 12),
+                mat(0x9a6030, 0.75), px, fl + 0.19, pz, 0, 0, 'furniture');
+            // Soil
+            addMesh(new THREE.CylinderGeometry(0.20, 0.20, 0.05, 12),
+                mat(0x2a1a08, 0.98), px, fl + 0.41, pz, 0, 0, 'furniture');
+            // Trunk
+            addMesh(new THREE.CylinderGeometry(0.04, 0.05, 1.1 + i * 0.12, 8),
+                mat(0x5a3a15, 0.85), px, fl + 0.98, pz, 0, 0, 'furniture');
+            // Fan leaves
+            const leafAngles = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5, Math.PI * 0.25, Math.PI * 0.75];
+            leafAngles.forEach((ang, li) => {
+                const lx = Math.sin(ang) * 0.55, lz = Math.cos(ang) * 0.55;
+                addMesh(new THREE.BoxGeometry(0.08, 0.06, 0.60),
+                    mat(li % 2 === 0 ? 0x1a7a20 : 0x28a030, 0.8),
+                    px + lx * 0.5, fl + 1.55 + i * 0.05, pz + lz * 0.5,
+                    0, ang, 'furniture');
+            });
+            // Upper foliage ball
+            addMesh(new THREE.SphereGeometry(0.38, 10, 8),
+                mat(i % 2 === 0 ? 0x228833 : 0x33aa44, 0.85),
+                px, fl + 1.78 + i * 0.08, pz, 0, 0, 'furniture');
+        });
+
+        // ── Lounge seating (along long sides) ────────────────────────
+        const loungeCol = currentStyle === 'luxury'      ? 0xf5f0e8 :
+                          currentStyle === 'traditional' ? 0xd4aa70 : 0xf0f4f8;
+        const frameCol  = currentStyle === 'luxury'      ? 0xd4a84c : 0xc0c8d0;
+        const sideOffset = poolW / 2 + 1.05;
+
+        [-sideOffset, sideOffset].forEach((dx, si) => {
+            const loungeX = cx + dx * (si === 0 ? 1 : 1);
+            const lx = si === 0 ? cx - sideOffset : cx + sideOffset;
+            const count = Math.max(2, Math.floor(rd * 0.28));
+
+            for (let li = 0; li < count; li++) {
+                const lz = cz - (count - 1) * 1.3 / 2 + li * 1.3;
+
+                // Lounge base/frame
+                const frameMesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.72, 0.08, 2.0),
+                    mat(frameCol, 0.2, 0.55)
+                );
+                frameMesh.position.set(lx, fl + 0.28, lz);
+                frameMesh.castShadow = true;
+                scene.add(frameMesh); groups.furniture.push(frameMesh);
+
+                // Cushion
+                box(0.65, 0.12, 1.85, loungeCol, lx, fl + 0.40, lz, 0.85, 'furniture');
+
+                // Backrest (angled)
+                const back = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.65, 0.55, 0.07),
+                    mat(loungeCol, 0.85)
+                );
+                back.position.set(lx, fl + 0.55, lz + (si === 0 ? 0.88 : -0.88));
+                back.rotation.x = si === 0 ? 0.32 : -0.32;
+                scene.add(back); groups.furniture.push(back);
+
+                // Towel on lounge
+                box(0.55, 0.02, 0.80,
+                    [0xff8c69, 0x5ba4cf, 0x7fba8a, 0xf5c842][li % 4],
+                    lx, fl + 0.53, lz - 0.2, 0.9, 'furniture');
+
+                // Leg supports
+                [[-0.30, -0.88], [-0.30, 0.88], [0.30, -0.88], [0.30, 0.88]].forEach(([ldx, ldz]) => {
+                    box(0.05, 0.28, 0.05, frameCol, lx + ldx, fl + 0.14, lz + ldz, 0.2, 'furniture');
+                });
+            }
+
+            // Small side table per pair
+            const tZ = cz;
+            cyl(0.24, 0.24, 0.04, 12, frameCol, lx, fl + 0.52, tZ, 'furniture');
+            cyl(0.04, 0.04, 0.52, 8, frameCol, lx, fl + 0.26, tZ, 'furniture');
+            // Drinks on table
+            cyl(0.04, 0.035, 0.22, 8, 0xffee88, lx, fl + 0.67, tZ + 0.08, 'furniture');
+        });
+
+        // ── Safety signage (NO DIVING sign + depth marker) ────────────
+        const signMat  = new THREE.MeshStandardMaterial({ color: 0xff3322, roughness: 0.9 });
+        const signBase = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+        const poleC    = mat(0xb0b8c0, 0.2, 0.7);
+
+        // No-diving sign pole near pool edge
+        const sdX = cx + poolW / 2 + 0.16;
+        const sdZ = cz - poolD / 2 + 0.28;
+        box(0.03, 1.1, 0.03, 0xb0b8c0, sdX, fl + 0.55, sdZ, 0.2, 'furniture');
+        // Sign board
+        const signBoard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.20, 0.025), signMat);
+        signBoard.position.set(sdX, fl + 1.14, sdZ);
+        scene.add(signBoard); groups.furniture.push(signBoard);
+        // White symbol strip
+        box(0.22, 0.04, 0.03, 0xffffff, sdX, fl + 1.14, sdZ, 0.9, 'furniture');
+
+        // Depth marker sign on far end pool wall
+        const dmX = cx;
+        const dmZ = cz + poolD / 2 + 0.08;
+        box(0.035, 0.60, 0.025, 0x1a3a6a, dmX, fl + 0.56, dmZ, 0.3, 'furniture');
+        // Blue depth plate
+        const dmPlate = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.22, 0.030), 
+            new THREE.MeshStandardMaterial({ color: 0x1155aa, roughness: 0.7 }));
+        dmPlate.position.set(dmX, fl + 0.90, dmZ);
+        scene.add(dmPlate); groups.furniture.push(dmPlate);
+
+        // ── Ceiling fan over pool (modern/luxury) ────────────────────
+        if (currentStyle === 'modern' || currentStyle === 'luxury') {
+            const fanY = fl + (room.height || 2.7) - 0.30;
+            const fanCol = currentStyle === 'luxury' ? 0xd4a84c : 0x708090;
+            cyl(0.06, 0.06, 0.18, 10, fanCol, cx + poolW * 0.25, fanY, cz, 'furniture');
+            [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2].forEach(ang => {
+                const bladeMesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.55, 0.025, 0.15),
+                    mat(fanCol === 0xd4a84c ? 0x8b6b3d : 0x607080, 0.6)
+                );
+                bladeMesh.position.set(
+                    cx + poolW * 0.25 + Math.cos(ang) * 0.35,
+                    fanY - 0.10,
+                    cz + Math.sin(ang) * 0.35
+                );
+                bladeMesh.rotation.y = ang;
+                scene.add(bladeMesh); groups.furniture.push(bladeMesh);
+            });
+        }
+
+        // ── Register water surfaces for animation ─────────────────────
+        if (!window._poolMeshes) window._poolMeshes = [];
+        window._poolMeshes.push({ water: waterSurface, caustic });
+
+        // ── Ripple animation hook (registered once) ───────────────────
+        if (!window._poolAnimRegistered) {
+            window._poolAnimRegistered = true;
+            // Animation runs inside the main animate() loop via the _poolMeshes array
+        }
     }
 
     function furnishBalcony(cx, cz, fl, rw, rd) {
@@ -2655,7 +3116,42 @@
                 }
             });
         }
-
+        
+        // ── Pool water ripple animation ─────────────────────────────
+        if (window._poolMeshes && window._poolMeshes.length) {
+            const pt = Date.now() * 0.001;
+            window._poolMeshes.forEach(({ water, caustic }) => {
+                // Animated vertex ripple on water surface
+                if (water && water.geometry && water.geometry.attributes.position) {
+                    const pos = water.geometry.attributes.position;
+                    const count = pos.count;
+                    for (let i = 0; i < count; i++) {
+                        const x = pos.getX(i), z = pos.getZ(i);
+                        pos.setY(i,
+                            Math.sin(x * 3.2 + pt * 1.8) * 0.022 +
+                            Math.sin(z * 2.6 + pt * 1.3) * 0.018 +
+                            Math.sin((x - z) * 2.1 + pt * 2.1) * 0.012 +
+                            Math.cos(x * 1.5 + z * 1.5 + pt * 0.9) * 0.008
+                        );
+                    }
+                    pos.needsUpdate = true;
+                    water.geometry.computeVertexNormals();
+                    // Pulsing opacity — stays high (opaque pool water)
+                    water.material.opacity = 0.84 + Math.sin(pt * 1.4) * 0.06;
+                    // Emissive glow breathes like underwater lighting
+                    water.material.emissiveIntensity = 0.25 + Math.sin(pt * 2.2) * 0.12;
+                }
+                // Caustic shimmer — faster flicker, brighter peaks
+                if (caustic && caustic.material) {
+                    caustic.material.emissiveIntensity = 0.70 + Math.sin(pt * 3.5 + 0.8) * 0.30;
+                    caustic.material.opacity           = 0.22 + Math.sin(pt * 4.1 + 1.2) * 0.12;
+                    // Slowly drift caustic pattern for shimmer effect
+                    caustic.position.x += Math.sin(pt * 0.7) * 0.0004;
+                    caustic.position.z += Math.cos(pt * 0.5) * 0.0004;
+                }
+            });
+        }
+        
         renderer.render(scene, camera);
 
         // Resize check
