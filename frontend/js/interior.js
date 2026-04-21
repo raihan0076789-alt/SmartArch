@@ -61,6 +61,7 @@
         office:    { hex: 0x6fa8e0, css: '#6fa8e0', floor: 0x8b8070 },
         garage:    { hex: 0x8a8070, css: '#8a8070', floor: 0x707070 },
         staircase: { hex: 0xff9632, css: '#ff9632', floor: 0xc8a870 },
+        lift:      { hex: 0x56ccf2, css: '#56ccf2', floor: 0xc8b89a },
         other:     { hex: 0xaaaaaa, css: '#aaaaaa', floor: 0x999999 },
         balcony:   { hex: 0x64c8ff, css: '#64c8ff', floor: 0xb0c8d8 },
         hallway:   { hex: 0xc8a96e, css: '#c8a96e', floor: 0xc8a07a },
@@ -121,6 +122,8 @@
         // Kill previous renderer
         if (animId) cancelAnimationFrame(animId);
         if (renderer) { renderer.dispose(); }
+        // Stop any running lift animations from previous scene
+        if (window._liftAnimCleanups) { window._liftAnimCleanups.forEach(fn => fn()); window._liftAnimCleanups = []; }
 
         // Reset groups
         groups = { furniture: [], roof: [], walls: [], labels: [] };
@@ -272,6 +275,7 @@
             // Per-room ceiling lights
             rooms.forEach(room => {
                 if (room.type === 'staircase') return; // open vertical shaft, no ceiling light
+                if (room.type === 'lift') return;       // lift has its own interior warm light
                 const cx = ox + room.x + room.width / 2;
                 const cz = oz + room.z + room.depth / 2;
                 const rh = room.height || floorH;
@@ -288,6 +292,7 @@
             const floorMetal = currentStyle === 'luxury' ? 0.3 : 0;
             rooms.forEach(room => {
                 if (room.type === 'staircase') return; // staircase draws its own geometry
+                if (room.type === 'lift') return;       // lift draws its own polished floor
                 const cx = ox + room.x + room.width / 2;
                 const cz = oz + room.z + room.depth / 2;
                 let fc = (TYPE_COLOR[room.type] || TYPE_COLOR.other).floor;
@@ -697,6 +702,7 @@
 
         rooms.forEach(r => {
             if (r.type === 'staircase') return; // don't generate walls FROM staircase rooms
+            if (r.type === 'lift') return;       // lift uses glass panels, no solid walls
             const rx = r.x + r.width;
             if (rx < HW) edges.add(`v:${rx.toFixed(2)}:${r.z.toFixed(2)}:${(r.z + r.depth).toFixed(2)}`);
             const rz = r.z + r.depth;
@@ -830,6 +836,7 @@
             balcony:   furnishBalcony,
             hallway:   furnishHallway,
             entrance:  furnishEntrance,
+            lift:      furnishLift,
         }[room.type];
 
         if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
@@ -984,6 +991,381 @@
         );
         newelCap.position.set(cx - stairW / 2 - 0.06, baseFloorY + 1.14, startZ - 0.06);
         scene.add(newelCap); groups.furniture.push(newelCap);
+    }
+
+    // ── Glass Elevator / Lift ─────────────────────────────────
+    function furnishLift(cx, cz, fl, rw, rd, room, baseY) {
+        const floorH = room.height || WALL_H;
+        const base   = baseY !== undefined ? baseY : 0.1;
+
+        // ── Stainless steel frame (4 corner columns) ──────────
+        const frameMat = mat(0xc0c8d8, 0.1, 0.85);
+        const colH = floorH + 0.06;
+        [[-rw/2 + 0.05,  -rd/2 + 0.05],
+         [ rw/2 - 0.05,  -rd/2 + 0.05],
+         [-rw/2 + 0.05,   rd/2 - 0.05],
+         [ rw/2 - 0.05,   rd/2 - 0.05]
+        ].forEach(([dx, dz]) => {
+            const col = new THREE.Mesh(new THREE.BoxGeometry(0.07, colH, 0.07), frameMat);
+            col.position.set(cx + dx, base + colH / 2, cz + dz);
+            col.castShadow = true;
+            scene.add(col); groups.furniture.push(col);
+        });
+
+        // Horizontal rails top & bottom
+        [[base + 0.04], [base + floorH - 0.04]].forEach(([ry]) => {
+            const hRail = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.08, 0.05, 0.05), frameMat);
+            hRail.position.set(cx, ry, cz - rd / 2 + 0.05);
+            scene.add(hRail); groups.furniture.push(hRail);
+            const hRail2 = hRail.clone();
+            hRail2.position.set(cx, ry, cz + rd / 2 - 0.05);
+            scene.add(hRail2); groups.furniture.push(hRail2);
+            const vRail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, rd - 0.08), frameMat);
+            vRail.position.set(cx - rw / 2 + 0.05, ry, cz);
+            scene.add(vRail); groups.furniture.push(vRail);
+            const vRail2 = vRail.clone();
+            vRail2.position.set(cx + rw / 2 - 0.05, ry, cz);
+            scene.add(vRail2); groups.furniture.push(vRail2);
+        });
+
+        // ── Glass panels (3 sides — front is door) ────────────
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xaee4f8, transparent: true, opacity: 0.2,
+            roughness: 0.0, metalness: 0.08,
+            transmission: 0.88, side: THREE.DoubleSide,
+        });
+        // Left panel
+        const leftPanel = new THREE.Mesh(new THREE.BoxGeometry(0.03, floorH - 0.1, rd - 0.12), glassMat);
+        leftPanel.position.set(cx - rw / 2 + 0.05, base + floorH / 2, cz);
+        scene.add(leftPanel); groups.furniture.push(leftPanel);
+        // Right panel
+        const rightPanel = leftPanel.clone();
+        rightPanel.position.set(cx + rw / 2 - 0.05, base + floorH / 2, cz);
+        scene.add(rightPanel); groups.furniture.push(rightPanel);
+        // Back wall (semi-mirror)
+        const backMat = new THREE.MeshPhysicalMaterial({ color: 0x8ab8d8, roughness: 0.04, metalness: 0.55, transparent: true, opacity: 0.55 });
+        const backPanel = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.12, floorH - 0.1, 0.03), backMat);
+        backPanel.position.set(cx, base + floorH / 2, cz + rd / 2 - 0.05);
+        scene.add(backPanel); groups.furniture.push(backPanel);
+
+        // ── Polished marble/wood floor ─────────────────────────
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0xd4c4a8, roughness: 0.2, metalness: 0.1 });
+        const liftFloor = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.12, 0.08, rd - 0.12), floorMat);
+        liftFloor.position.set(cx, base + 0.04, cz);
+        liftFloor.receiveShadow = true;
+        scene.add(liftFloor); groups.furniture.push(liftFloor);
+
+        // Floor veining (decorative strips)
+        const veinMat = mat(0xb8a880, 0.3, 0.05);
+        for (let vi = -1; vi <= 1; vi++) {
+            const vein = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.14, 0.001, 0.03), veinMat);
+            vein.position.set(cx, base + 0.085, cz + vi * (rd / 3.5));
+            scene.add(vein); groups.furniture.push(vein);
+        }
+
+        // ── Polished ceiling ──────────────────────────────────
+        const ceilMat = new THREE.MeshStandardMaterial({ color: 0xe8eaee, roughness: 0.35, metalness: 0.4 });
+        const ceilMesh = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.1, 0.05, rd - 0.1), ceilMat);
+        ceilMesh.position.set(cx, base + floorH - 0.025, cz);
+        scene.add(ceilMesh); groups.furniture.push(ceilMesh);
+
+        // ── Warm ambient interior light ────────────────────────
+        const warmLight = new THREE.PointLight(0xfff4d6, 1.5, rd * 4.5);
+        warmLight.position.set(cx, base + floorH - 0.18, cz);
+        scene.add(warmLight); groups.furniture.push(warmLight);
+
+        // Ceiling LED strip (emissive bar)
+        const ledMat = new THREE.MeshStandardMaterial({ color: 0xfff8e8, emissive: 0xfff8e8, emissiveIntensity: 1.2 });
+        const ledStrip = new THREE.Mesh(new THREE.BoxGeometry(rw * 0.6, 0.02, 0.06), ledMat);
+        ledStrip.position.set(cx, base + floorH - 0.05, cz);
+        scene.add(ledStrip); groups.furniture.push(ledStrip);
+
+        // ── Digital control panel — mounted FLUSH on inner right wall ──
+        // Panel body: rotated so its face points inward (toward -X direction)
+        // Positioned well inside the wall: x = cx + rw/2 - 0.12 (leaving clearance from glass)
+        const panelX  = cx + rw / 2 - 0.12;   // inset from right glass wall
+        const panelZ  = cz - rd * 0.15;        // slightly toward front
+        const panelY  = base + floorH * 0.50;
+
+        const panelBodyMat = mat(0x0d1520, 0.3, 0.82);
+        const controlPanel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.72, 0.38), panelBodyMat);
+        controlPanel.position.set(panelX, panelY, panelZ);
+        scene.add(controlPanel); groups.furniture.push(controlPanel);
+
+        // Brushed metal border around panel
+        const panelBorderMat = mat(0x8090a0, 0.12, 0.88);
+        const panelBorder = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.76, 0.42), panelBorderMat);
+        panelBorder.position.set(panelX + 0.008, panelY, panelZ);
+        scene.add(panelBorder); groups.furniture.push(panelBorder);
+        // Re-add panel body on top of border
+        const panelFace = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.72, 0.38), panelBodyMat);
+        panelFace.position.set(panelX - 0.001, panelY, panelZ);
+        scene.add(panelFace); groups.furniture.push(panelFace);
+
+        // Floor indicator display (top of panel, glowing screen)
+        const screenMat = new THREE.MeshStandardMaterial({ color: 0x001830, emissive: 0x003870, emissiveIntensity: 1.1 });
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.14, 0.26), screenMat);
+        screen.position.set(panelX - 0.03, panelY + 0.22, panelZ);
+        scene.add(screen); groups.furniture.push(screen);
+
+        // Glowing floor number indicator bar
+        const indicatorMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.5 });
+        const indicator = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.06, 0.10), indicatorMat);
+        indicator.position.set(panelX - 0.031, panelY + 0.22, panelZ);
+        scene.add(indicator); groups.furniture.push(indicator);
+
+        // Small ambient glow light from the panel screen
+        const panelGlow = new THREE.PointLight(0x00ccff, 0.4, 0.8);
+        panelGlow.position.set(panelX - 0.15, panelY + 0.22, panelZ);
+        scene.add(panelGlow); groups.furniture.push(panelGlow);
+
+        // Floor buttons (mounted on panel face, cylinders pointing -X)
+        const btnColors  = [0x00d4ff, 0x00aaff, 0xff4444, 0xffcc00];
+        const btnLabels  = [1, 2, 0, -1]; // floors + open/close
+        for (let bi = 0; bi < 4; bi++) {
+            const btnMat = new THREE.MeshStandardMaterial({
+                color: btnColors[bi], emissive: btnColors[bi], emissiveIntensity: 0.85, roughness: 0.18
+            });
+            const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.025, 14), btnMat);
+            btn.rotation.z = Math.PI / 2;   // cylinder axis along X (poking out of panel face)
+            btn.position.set(panelX - 0.033, panelY - 0.02 - bi * 0.1, panelZ + 0.04);
+            scene.add(btn); groups.furniture.push(btn);
+
+            // Button recess ring (dark surround)
+            const recessMat = mat(0x050d14, 0.5, 0.6);
+            const recess = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.01, 14), recessMat);
+            recess.rotation.z = Math.PI / 2;
+            recess.position.set(panelX - 0.022, panelY - 0.02 - bi * 0.1, panelZ + 0.04);
+            scene.add(recess); groups.furniture.push(recess);
+        }
+
+        // Emergency stop button (red, larger, lower)
+        const stopMat = new THREE.MeshStandardMaterial({ color: 0xff1111, emissive: 0xcc0000, emissiveIntensity: 0.7, roughness: 0.2 });
+        const stopBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.025, 14), stopMat);
+        stopBtn.rotation.z = Math.PI / 2;
+        stopBtn.position.set(panelX - 0.033, panelY - 0.44, panelZ);
+        scene.add(stopBtn); groups.furniture.push(stopBtn);
+
+        // ── Handrail system — 3 walls (left, right, back) ────────
+        const railMat = mat(0xc0c8d8, 0.10, 0.88);
+
+        // Back wall rail
+        const railBack = new THREE.Mesh(new THREE.BoxGeometry(rw * 0.60, 0.04, 0.04), railMat);
+        railBack.position.set(cx, base + floorH * 0.44, cz + rd / 2 - 0.11);
+        scene.add(railBack); groups.furniture.push(railBack);
+
+        // Left wall rail (runs along Z axis)
+        const railLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, rd * 0.55), railMat);
+        railLeft.position.set(cx - rw / 2 + 0.11, base + floorH * 0.44, cz);
+        scene.add(railLeft); groups.furniture.push(railLeft);
+
+        // Right wall rail (shorter — control panel occupies part of this wall)
+        const railRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, rd * 0.30), railMat);
+        railRight.position.set(cx + rw / 2 - 0.11, base + floorH * 0.44, cz + rd * 0.18);
+        scene.add(railRight); groups.furniture.push(railRight);
+
+        // Rail wall brackets (back rail)
+        [-rw * 0.22, 0, rw * 0.22].forEach(dx => {
+            const brk = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.055, 0.07), railMat);
+            brk.position.set(cx + dx, base + floorH * 0.44, cz + rd / 2 - 0.09);
+            scene.add(brk); groups.furniture.push(brk);
+        });
+
+        // ── Mirror panel on back wall (reflective surface) ────────
+        const mirrorMat = new THREE.MeshStandardMaterial({ color: 0xd8e8f0, roughness: 0.02, metalness: 0.92, envMapIntensity: 1.5 });
+        const mirror = new THREE.Mesh(new THREE.BoxGeometry(rw * 0.65, floorH * 0.55, 0.03), mirrorMat);
+        mirror.position.set(cx, base + floorH * 0.62, cz + rd / 2 - 0.07);
+        scene.add(mirror); groups.furniture.push(mirror);
+
+        // Mirror frame (brushed steel)
+        const mFrameMat = mat(0xa0aab8, 0.12, 0.85);
+        const mFrame = new THREE.Mesh(new THREE.BoxGeometry(rw * 0.67 + 0.04, floorH * 0.55 + 0.04, 0.025), mFrameMat);
+        mFrame.position.set(cx, base + floorH * 0.62, cz + rd / 2 - 0.083);
+        scene.add(mFrame); groups.furniture.push(mFrame);
+
+        // ── Interior ceiling light fixture (recessed LED ring) ────
+        const recessCeilMat = mat(0x1a2030, 0.4, 0.6);
+        const recessCeil = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.03, 20), recessCeilMat);
+        recessCeil.position.set(cx, base + floorH - 0.04, cz);
+        scene.add(recessCeil); groups.furniture.push(recessCeil);
+
+        const ledRingMat = new THREE.MeshStandardMaterial({ color: 0xfff5cc, emissive: 0xfff0aa, emissiveIntensity: 2.0 });
+        const ledRing = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.012, 8, 32), ledRingMat);
+        ledRing.rotation.x = Math.PI / 2;
+        ledRing.position.set(cx, base + floorH - 0.035, cz);
+        scene.add(ledRing); groups.furniture.push(ledRing);
+
+        // ── Ventilation grille on ceiling ────────────────────────
+        const grilleMat = mat(0x505870, 0.5, 0.6);
+        for (let gi = -1; gi <= 1; gi++) {
+            const grille = new THREE.Mesh(new THREE.BoxGeometry(rw * 0.12, 0.02, 0.025), grilleMat);
+            grille.position.set(cx + gi * rw * 0.15, base + floorH - 0.03, cz - rd * 0.25);
+            scene.add(grille); groups.furniture.push(grille);
+        }
+
+        // ── Floor skirting (polished stone border strip) ──────────
+        const skirtMat = mat(0xa89878, 0.25, 0.15);
+        // Front/back skirting
+        [[cz - rd / 2 + 0.06], [cz + rd / 2 - 0.06]].forEach(([sz]) => {
+            const sk = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.14, 0.06, 0.04), skirtMat);
+            sk.position.set(cx, base + 0.03, sz);
+            scene.add(sk); groups.furniture.push(sk);
+        });
+        // Side skirting
+        [[cx - rw / 2 + 0.06], [cx + rw / 2 - 0.06]].forEach(([sx]) => {
+            const sk = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, rd - 0.14), skirtMat);
+            sk.position.set(sx, base + 0.03, cz);
+            scene.add(sk); groups.furniture.push(sk);
+        });
+
+        // ── Sliding door — inset fully inside the front glass wall ──
+        // doorZ: pushed inward by glass thickness (0.04) + small gap so panels never clip glass
+        const doorZ     = cz - rd / 2 + 0.10;   // inset from front glass edge
+        const panelW    = (rw - 0.14) / 2;       // half-width of each panel
+        const doorH     = floorH * 0.90;
+        const doorMat   = new THREE.MeshPhysicalMaterial({ color: 0xc8e4f8, transparent: true, opacity: 0.45, roughness: 0.02, metalness: 0.5 });
+        const doorFrameMat = mat(0xa8b8c8, 0.12, 0.84);
+
+        // Top frame bar (above doors, inside lift)
+        const dframeTop = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.05, 0.03), doorFrameMat);
+        dframeTop.position.set(cx, base + floorH - 0.05, doorZ);
+        scene.add(dframeTop); groups.furniture.push(dframeTop);
+
+        // Side frame pillars
+        [-1, 1].forEach(side => {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.04, doorH, 0.03), doorFrameMat);
+            pillar.position.set(cx + side * (rw / 2 - 0.06), base + doorH / 2 + 0.08, doorZ);
+            scene.add(pillar); groups.furniture.push(pillar);
+        });
+
+        // Bottom door track (inside, flush with floor)
+        const trackMat = mat(0x8890a0, 0.2, 0.78);
+        const track = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.025, 0.05), trackMat);
+        track.position.set(cx, base + 0.012, doorZ);
+        scene.add(track); groups.furniture.push(track);
+
+        // Top door track
+        const trackTop = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.025, 0.05), trackMat);
+        trackTop.position.set(cx, base + doorH + 0.08, doorZ);
+        scene.add(trackTop); groups.furniture.push(trackTop);
+
+        // Two sliding door panels — created here, animated below
+        const doorLeft  = new THREE.Mesh(new THREE.BoxGeometry(panelW, doorH, 0.03), doorMat);
+        const doorRight = doorLeft.clone();
+        // Closed position: panels meet at center
+        doorLeft.position.set(cx - panelW / 2, base + doorH / 2 + 0.08, doorZ);
+        doorRight.position.set(cx + panelW / 2, base + doorH / 2 + 0.08, doorZ);
+        scene.add(doorLeft);  groups.furniture.push(doorLeft);
+        scene.add(doorRight); groups.furniture.push(doorRight);
+
+        // Door handle bars (thin strip on each panel)
+        const handleMat = mat(0xc0ccd8, 0.08, 0.9);
+        [-1, 1].forEach(side => {
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, doorH * 0.25, 0.025), handleMat);
+            handle.position.set(cx + side * 0.05, base + doorH * 0.5, doorZ - 0.02);
+            scene.add(handle); groups.furniture.push(handle);
+        });
+
+        // ── Animated lift car (moves smoothly up and down) ────
+        const carMat = new THREE.MeshPhysicalMaterial({
+            color: 0xd4eeff, transparent: true, opacity: 0.15,
+            roughness: 0.0, metalness: 0.15, side: THREE.DoubleSide
+        });
+        const carH = floorH * 0.82;
+        const carMesh = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.2, carH, rd - 0.2), carMat);
+        carMesh.position.set(cx, base + carH / 2 + 0.08, cz);
+        scene.add(carMesh); groups.furniture.push(carMesh);
+
+        // Car ceiling edge glow
+        const carCeilGlowMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, emissive: 0x44aaff, emissiveIntensity: 0.6 });
+        const carCeilGlow = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.22, 0.025, rd - 0.22), carCeilGlowMat);
+        carCeilGlow.position.set(cx, base + carH + 0.08, cz);
+        scene.add(carCeilGlow); groups.furniture.push(carCeilGlow);
+
+        // ── Unified looping animation: car movement + door open/close ──
+        // Timeline per 10s cycle:
+        //   0.00–0.15  doors closing (panels slide to center)
+        //   0.15–0.45  car travels up   (doors closed)
+        //   0.45–0.55  pause at top
+        //   0.55–0.65  doors open at top (panels slide apart)
+        //   0.65–0.70  pause open
+        //   0.70–0.80  doors close again
+        //   0.80–0.95  car travels down
+        //   0.95–1.00  doors open at bottom → loop
+        const CYCLE    = 10000; // ms
+        const closedX  = panelW / 2;      // panels touching at center
+        const openX    = rw / 2 - 0.07;   // panels slid to sides (near frame pillars)
+        const _liftStart = Date.now();
+        let _liftAnimActive = true;
+
+        // Ease function: smooth-step (0→1)
+        function _ease(t) { return t * t * (3 - 2 * t); }
+        // Remap t from [a,b] to [0,1], clamped
+        function _remap(t, a, b) { return Math.max(0, Math.min(1, (t - a) / (b - a))); }
+
+        function _animLift() {
+            if (!_liftAnimActive) return;
+            requestAnimationFrame(_animLift);
+
+            const t = (Date.now() - _liftStart) % CYCLE / CYCLE; // 0..1
+
+            // ── Door position ───────────────────────────────────
+            let doorOffset;
+            if (t < 0.15) {
+                // closing
+                doorOffset = _ease(_remap(t, 0, 0.15)) * (closedX - openX) + openX;
+            } else if (t < 0.55) {
+                // closed while car moves up
+                doorOffset = closedX;
+            } else if (t < 0.65) {
+                // opening at top
+                doorOffset = closedX - _ease(_remap(t, 0.55, 0.65)) * (closedX - openX);
+            } else if (t < 0.70) {
+                // open pause
+                doorOffset = openX;
+            } else if (t < 0.80) {
+                // closing again
+                doorOffset = _ease(_remap(t, 0.70, 0.80)) * (closedX - openX) + openX;
+            } else if (t < 0.95) {
+                // closed while car moves down
+                doorOffset = closedX;
+            } else {
+                // opening at bottom
+                doorOffset = closedX - _ease(_remap(t, 0.95, 1.00)) * (closedX - openX);
+            }
+            doorLeft.position.x  = cx - doorOffset;
+            doorRight.position.x = cx + doorOffset;
+
+            // ── Car vertical position ───────────────────────────
+            let carT;
+            if (t >= 0.15 && t < 0.55) {
+                // going up
+                carT = _ease(_remap(t, 0.15, 0.50));
+            } else if (t >= 0.80 && t < 0.95) {
+                // going down
+                carT = 1 - _ease(_remap(t, 0.80, 0.95));
+            } else if (t >= 0.55 && t < 0.80) {
+                carT = 1; // at top
+            } else {
+                carT = 0; // at bottom
+            }
+            const travel = floorH * 0.10;
+            const newY   = base + carH / 2 + 0.08 + carT * travel;
+            carMesh.position.y      = newY;
+            carCeilGlow.position.y  = base + carH + 0.08 + carT * travel;
+
+            // ── Glow / shimmer pulses ───────────────────────────
+            const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 14);
+            carCeilGlowMat.emissiveIntensity = 0.4 + pulse * 0.5;
+            glassMat.opacity  = 0.18 + pulse * 0.06;
+            carMat.opacity    = 0.12 + pulse * 0.05;
+            warmLight.intensity = 1.3 + pulse * 0.35;
+        }
+        _animLift();
+
+        // Stop animation when scene is reset (avoid memory leak)
+        if (!window._liftAnimCleanups) window._liftAnimCleanups = [];
+        window._liftAnimCleanups.push(() => { _liftAnimActive = false; });
     }
 
     function furnishLiving(cx, cz, fl, rw, rd) {

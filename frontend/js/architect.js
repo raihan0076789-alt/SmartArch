@@ -41,6 +41,7 @@
     balcony:   { bg: 'rgba(100,200,255,0.25)', border: '#64c8ff', hex: 0x64c8ff, dot: '#64c8ff' },
     hallway:   { bg: 'rgba(210,185,140,0.28)', border: '#c8a96e', hex: 0xc8a96e, dot: '#c8a96e' },
     entrance:  { bg: 'rgba(212,169,110,0.28)', border: '#d4a96e', hex: 0xd4a96e, dot: '#d4a96e' },
+    lift:      { bg: 'rgba(86,204,242,0.18)',  border: '#56ccf2', hex: 0x56ccf2, dot: '#00d4ff' },
     other:     { bg: 'rgba(180,180,180,0.25)', border: '#aaa',    hex: 0xaaaaaa, dot: '#aaa'    }
   };
 
@@ -57,6 +58,7 @@
     balcony:   1200,
     hallway:   1100,
     entrance:  1600,
+    lift:      3500,
     other:     1500
   };
   function getRoomRate(type){ return ROOM_RATES[type] || ROOM_RATES.other; }
@@ -200,6 +202,15 @@
     const canvas=el('floorplanCanvas'),container=el('canvasContainer');
     canvas.width=container.clientWidth;canvas.height=container.clientHeight;
     window.addEventListener('resize',()=>{canvas.width=container.clientWidth;canvas.height=container.clientHeight;drawFloorPlan();});
+    // Continuous animation loop for lift shimmer (only redraws when 2D view is active and a lift exists)
+    let _liftAnimId=null;
+    function _liftAnimLoop(){
+      _liftAnimId=requestAnimationFrame(_liftAnimLoop);
+      if(currentView==='2d'&&projectData&&projectData.floors.some(f=>f.rooms.some(r=>r.type==='lift'))){
+        drawFloorPlan();
+      }
+    }
+    _liftAnimLoop();
   }
 
   function setupEventListeners(){
@@ -431,7 +442,28 @@
   }
 
   function handleMouseUp(){
-    if(isDragging){renderRooms();updateInfoPanel();}
+    if(isDragging){
+      // Sync lift shaft position across all floors when a lift is moved
+      if(selectedRoom&&selectedRoom.type==='lift'){
+        const lx=selectedRoom.x,lz=selectedRoom.z;
+        projectData.floors.forEach(f=>{f.rooms.forEach(r=>{if(r.type==='lift'&&r!==selectedRoom&&Math.abs(r._liftShaftX-selectedRoom._liftShaftX)<0.5){r.x=lx;r.z=lz;r._liftShaftX=lx;r._liftShaftZ=lz;}});});
+        selectedRoom._liftShaftX=lx;selectedRoom._liftShaftZ=lz;
+      }
+      renderRooms();updateInfoPanel();
+    }
+    if(isResizing&&selectedRoom&&selectedRoom.type==='lift'){
+      // Sync lift size across all floors when resized via drag handles
+      const sx=selectedRoom._liftShaftX??selectedRoom.x;
+      const sz=selectedRoom._liftShaftZ??selectedRoom.z;
+      const lw=selectedRoom.width,ld=selectedRoom.depth;
+      projectData.floors.forEach(f=>{
+        f.rooms.forEach(r=>{
+          if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5){
+            r.width=lw;r.depth=ld;
+          }
+        });
+      });
+    }
     isDragging=false;isResizing=false;resizeHandle=null;isDraggingElement=null;dragElementStart=null;
     if(selectedRoom)showRoomProperties(selectedRoom);
   }
@@ -509,6 +541,33 @@
     selectedRoom=room;renderRooms();showRoomProperties(room);updateInfoPanel();drawFloorPlan();markUnsaved();
     showToast('Staircase placed — drag to reposition','success');
   }
+
+  function addLift(){
+    if(!projectData||projectData.floors.length<2){showToast('Lift requires 2+ floors — add more floors first','error');return;}
+    const liftW=2,liftD=2;
+    // Find a free spot on the current floor
+    let x=0,z=0,placed=false,tries=0;
+    const currentFloor=projectData.floors[activeFloorIdx];
+    while(tries++<100){
+      x=snap(Math.random()*Math.max(0,projectData.totalWidth-liftW));
+      z=snap(Math.random()*Math.max(0,projectData.totalDepth-liftD));
+      if(!getOverlappingRooms(x,z,liftW,liftD,null).length){placed=true;break;}
+    }
+    if(!placed){showToast('⚠️ No free space for lift — resize canvas or remove a room','error');return;}
+    // Place lift extension on ALL floors at the exact same x,z
+    projectData.floors.forEach((f,fi)=>{
+      const alreadyHas=f.rooms.some(r=>r.type==='lift'&&Math.abs(r.x-x)<0.5&&Math.abs(r.z-z)<0.5);
+      if(alreadyHas)return;
+      const liftName=fi===0?'Lift':`Lift (F${fi+1})`;
+      f.rooms.push({name:liftName,type:'lift',width:liftW,depth:liftD,x,z,height:f.height||2.7,doors:[],windows:[],_liftShaftX:x,_liftShaftZ:z});
+    });
+    pushUndoState();
+    selectedRoom=projectData.floors[activeFloorIdx].rooms.find(r=>r.type==='lift'&&Math.abs(r.x-x)<0.5&&Math.abs(r.z-z)<0.5);
+    renderRooms();if(selectedRoom)showRoomProperties(selectedRoom);
+    updateInfoPanel();drawFloorPlan();markUnsaved();
+    showToast('🛗 Glass lift placed on all floors at the same position','success');
+  }
+  window.addLift=addLift;
 
   function addRoomOfType(type){
     const floor=projectData.floors[activeFloorIdx];
@@ -618,6 +677,9 @@
     const container=el('floorTabs');if(!container||!projectData)return;
     container.innerHTML=projectData.floors.map((f,i)=>`<button class="floor-tab ${activeFloorIdx===i?'active':''}" onclick="switchFloor(${i})">${f.name||`Floor ${i+1}`}</button>`).join('');
     updateFloorIsoButtons();
+    // Lift button: only when 2+ floors exist
+    const liftBtn=document.getElementById('liftRoomBtn');
+    if(liftBtn)liftBtn.style.display=(projectData.floors.length>1)?'':'none';
   }
 
   function switchFloor(idx){
@@ -636,6 +698,9 @@
       const hasMultiFloor=projectData&&projectData.floors&&projectData.floors.length>1;
       balconyBtn.style.display=(hasMultiFloor&&activeFloorIdx>0)?'':'none';
     }
+    // Lift button: only when 2+ floors exist
+    const liftBtn=document.getElementById('liftRoomBtn');
+    if(liftBtn)liftBtn.style.display=(projectData&&projectData.floors&&projectData.floors.length>1)?'':'none';
   }
   function drawFloorPlan(){
     const canvas=el('floorplanCanvas'),ctx=canvas.getContext('2d');
@@ -690,6 +755,29 @@
           ctx.strokeStyle='#ff9632';ctx.lineWidth=2;
           ctx.beginPath();ctx.moveTo(rx+rw/2,ry+rh-6);ctx.lineTo(rx+rw/2,ry+6);ctx.stroke();
           ctx.beginPath();ctx.moveTo(rx+rw/2-5,ry+12);ctx.lineTo(rx+rw/2,ry+6);ctx.lineTo(rx+rw/2+5,ry+12);ctx.stroke();
+        }
+        // Lift 2D: draw glass elevator symbol
+        if(room.type==='lift'&&isActive){
+          const lcx=rx+rw/2,lcy=ry+rh/2;
+          // Inner frame (steel)
+          ctx.strokeStyle='#56ccf2';ctx.lineWidth=1.5;
+          ctx.strokeRect(rx+3,ry+3,rw-6,rh-6);
+          // Diagonal cross-lines (glass panel pattern)
+          ctx.strokeStyle='rgba(86,204,242,0.3)';ctx.lineWidth=1;
+          ctx.beginPath();ctx.moveTo(rx+3,ry+3);ctx.lineTo(rx+rw-3,ry+rh-3);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(rx+rw-3,ry+3);ctx.lineTo(rx+3,ry+rh-3);ctx.stroke();
+          // Up arrow
+          ctx.strokeStyle='#00d4ff';ctx.lineWidth=2;
+          ctx.beginPath();ctx.moveTo(lcx,lcy-4);ctx.lineTo(lcx,lcy-12);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(lcx-5,lcy-8);ctx.lineTo(lcx,lcy-14);ctx.lineTo(lcx+5,lcy-8);ctx.stroke();
+          // Down arrow
+          ctx.beginPath();ctx.moveTo(lcx,lcy+4);ctx.lineTo(lcx,lcy+12);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(lcx-5,lcy+8);ctx.lineTo(lcx,lcy+14);ctx.lineTo(lcx+5,lcy+8);ctx.stroke();
+          // Glow dot center
+          ctx.beginPath();ctx.arc(lcx,lcy,3,0,Math.PI*2);ctx.fillStyle='#00d4ff';ctx.fill();
+          // Animated shimmer ring
+          const shimR=4+2*Math.abs(Math.sin(Date.now()*0.003));
+          ctx.beginPath();ctx.arc(lcx,lcy,shimR,0,Math.PI*2);ctx.strokeStyle='rgba(0,212,255,0.4)';ctx.lineWidth=1;ctx.stroke();
         }
         if(isActive)drawRoomElements(ctx,room,rx,ry,rw,rh,scale,isDark);
       });
@@ -865,6 +953,18 @@
       selectedRoom.x=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,selectedRoom.x));
       selectedRoom.z=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,selectedRoom.z));
     }
+    // ── Lift shaft sync: propagate width/depth/height to all matching lift rooms on other floors ──
+    if(selectedRoom.type==='lift'&&['width','depth','height'].includes(prop)){
+      const sx=selectedRoom._liftShaftX??selectedRoom.x;
+      const sz=selectedRoom._liftShaftZ??selectedRoom.z;
+      projectData.floors.forEach(f=>{
+        f.rooms.forEach(r=>{
+          if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5){
+            r[prop]=selectedRoom[prop];
+          }
+        });
+      });
+    }
     renderRooms();drawFloorPlan();updateInfoPanel();markUnsaved();
   }
   function updateProjectSettings(){
@@ -894,6 +994,9 @@
       const hasMultiFloor=projectData.floors.length>1;
       balconyBtn.style.display=(hasMultiFloor&&activeFloorIdx>0)?'':'none';
     }
+    // Sync lift button visibility with floor count
+    const liftBtn=document.getElementById('liftRoomBtn');
+    if(liftBtn)liftBtn.style.display=(projectData.floors.length>1)?'':'none';
     updateFloorTabs();drawFloorPlan();updateInfoPanel();markUnsaved();
     if(currentView==='3d')init3DView();
   }
@@ -2286,7 +2389,7 @@
   }
 
   Object.assign(window,{
-    addRoom,addRoomOfType,setTool,setView,setStyle,
+    addRoom,addRoomOfType,addLift,setTool,setView,setStyle,
     zoomIn,zoomOut,resetZoom,refresh3D,
     saveProject,exportProject,showSettings:()=>{},
     generateFloorPlan,generate3DModel,generateInterior,
