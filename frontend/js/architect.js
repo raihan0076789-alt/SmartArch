@@ -1467,12 +1467,17 @@
       });
       if(style!=='minimalist')addWindows(scene,W,D,baseY,thisFloorH,style,floor);
       floor.rooms.forEach(room=>{
-        const cx=ox+room.x+room.width/2,cz=oz+room.z+room.depth/2,roomH=room.height||thisFloorH;
-        const rf=new THREE.Mesh(new THREE.BoxGeometry(room.width-0.02,0.08,room.depth-0.02),getRoomFloorMat(style,room.type));rf.position.set(cx,baseY+0.04,cz);rf.receiveShadow=true;scene.add(rf);
-        [{w:room.width,d:0.1,x:cx,z:oz+room.z,isEdge:room.z<=0.01},{w:room.width,d:0.1,x:cx,z:oz+room.z+room.depth,isEdge:room.z+room.depth>=D-0.01},{w:0.1,d:room.depth,x:ox+room.x,z:cz,isEdge:room.x<=0.01},{w:0.1,d:room.depth,x:ox+room.x+room.width,z:cz,isEdge:room.x+room.width>=W-0.01}].forEach(({w:iw,d:id,x,z,isEdge})=>{
-          if(!isEdge){const iwm=new THREE.Mesh(new THREE.BoxGeometry(iw,roomH,id),intWallMat);iwm.position.set(x,baseY+roomH/2,z);iwm.castShadow=true;iwm.receiveShadow=true;scene.add(iwm);}
-        });
-        const rl=new THREE.PointLight(0xfff5e0,0.35,Math.max(room.width,room.depth)*1.8);rl.position.set(cx,baseY+roomH-0.4,cz);scene.add(rl);
+      // Clamp room bounds to building footprint to prevent overflow
+      const clampedX = Math.max(0, room.x);
+      const clampedZ = Math.max(0, room.z);
+      const clampedW = Math.min(room.width, W - clampedX);
+      const clampedD = Math.min(room.depth, D - clampedZ);
+      const cx=ox+clampedX+clampedW/2,cz=oz+clampedZ+clampedD/2,roomH=room.height||thisFloorH;
+      const rf=new THREE.Mesh(new THREE.BoxGeometry(clampedW-0.02,0.08,clampedD-0.02),getRoomFloorMat(style,room.type));rf.position.set(cx,baseY+0.04,cz);rf.receiveShadow=true;scene.add(rf);
+      [{w:clampedW,d:0.1,x:cx,z:oz+clampedZ,isEdge:clampedZ<=0.01},{w:clampedW,d:0.1,x:cx,z:oz+clampedZ+clampedD,isEdge:clampedZ+clampedD>=D-0.01},{w:0.1,d:clampedD,x:ox+clampedX,z:cz,isEdge:clampedX<=0.01},{w:0.1,d:clampedD,x:ox+clampedX+clampedW,z:cz,isEdge:clampedX+clampedW>=W-0.01}].forEach(({w:iw,d:id,x,z,isEdge})=>{
+        if(!isEdge){const iwm=new THREE.Mesh(new THREE.BoxGeometry(iw,roomH,id),intWallMat);iwm.position.set(x,baseY+roomH/2,z);iwm.castShadow=true;iwm.receiveShadow=true;scene.add(iwm);}
+      });
+      const rl=new THREE.PointLight(0xfff5e0,0.35,Math.max(room.width,room.depth)*1.8);rl.position.set(cx,baseY+roomH-0.4,cz);scene.add(rl);
         (room.doors||[]).forEach(door=>addDoorElement3D(scene,room,door,ox,oz,baseY,style));
         (room.windows||[]).forEach(win=>addWindowElement3D(scene,room,win,ox,oz,baseY,thisFloorH,style));
       });

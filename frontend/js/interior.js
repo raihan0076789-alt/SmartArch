@@ -298,23 +298,22 @@
                     mat(fc, floorRough, floorMetal), cx, baseY + 0.03, cz, 0, 0, 'walls');
             });
 
-            // Exterior walls — cut openings where balconies/entrance touch boundary
-            // For entrance rooms: snap a virtual copy to the nearest boundary so the
-            // wall cut aligns with the exterior wall, regardless of where user placed it.
+           // Exterior walls — cut openings only when entrance actually touches the boundary (same as balcony)
             const roomsForWalls = rooms.map(r => {
                 if (r.type !== 'entrance') return r;
-                const distFront = r.z;
-                const distBack  = HD - (r.z + r.depth);
-                const distLeft  = r.x;
-                const distRight = HW - (r.x + r.width);
-                const minDist   = Math.min(distFront, distBack, distLeft, distRight);
-                const snapped   = { ...r };
-                if      (minDist === distFront) snapped.z = 0;
-                else if (minDist === distBack)  snapped.z = HD - r.depth;
-                else if (minDist === distLeft)  snapped.x = 0;
-                else                            snapped.x = HW - r.width;
+                const THRESH = 0.35;
+                const nearFront = r.z < THRESH;
+                const nearBack  = HD - (r.z + r.depth) < THRESH;
+                const nearLeft  = r.x < THRESH;
+                const nearRight = HW - (r.x + r.width) < THRESH;
+                if (!nearFront && !nearBack && !nearLeft && !nearRight) return null; // not near any wall — exclude
+                const snapped = { ...r };
+                if      (nearFront) snapped.z = 0;
+                else if (nearBack)  snapped.z = HD - r.depth;
+                else if (nearLeft)  snapped.x = 0;
+                else                snapped.x = HW - r.width;
                 return snapped;
-            });
+            }).filter(Boolean);
             buildExteriorWalls(roomsForWalls, HW, HD, ox, oz, wy, floorH, baseY, wMat, wMatI);
 
             // Interior partition walls (use original room positions)
@@ -505,18 +504,12 @@
         // Collect balcony/entrance spans per boundary edge
         const skipFront = [], skipBack = [], skipLeft = [], skipRight = [];
         balconies.forEach(r => {
-            if (r.type === 'entrance') {
-                // Entrance: open the wall on whichever boundary side is nearest,
-                // regardless of how far the room was dragged from the edge.
-                const distFront = r.z;
-                const distBack  = HD - (r.z + r.depth);
-                const distLeft  = r.x;
-                const distRight = HW - (r.x + r.width);
-                const minDist   = Math.min(distFront, distBack, distLeft, distRight);
-                if (minDist === distFront)       skipFront.push({from: ox + r.x, to: ox + r.x + r.width});
-                else if (minDist === distBack)   skipBack.push ({from: ox + r.x, to: ox + r.x + r.width});
-                else if (minDist === distLeft)   skipLeft.push ({from: oz + r.z, to: oz + r.z + r.depth});
-                else                             skipRight.push({from: oz + r.z, to: oz + r.z + r.depth});
+           if (r.type === 'entrance') {
+                // Entrance: only open wall when actually touching the boundary (same as balcony)
+                if (r.z < THRESH)                skipFront.push({from: ox + r.x, to: ox + r.x + r.width});
+                if (r.z + r.depth > HD - THRESH) skipBack.push ({from: ox + r.x, to: ox + r.x + r.width});
+                if (r.x < THRESH)                skipLeft.push ({from: oz + r.z, to: oz + r.z + r.depth});
+                if (r.x + r.width > HW - THRESH) skipRight.push({from: oz + r.z, to: oz + r.z + r.depth});
             } else {
                 // Balcony: strict boundary-touch check
                 if (r.z < THRESH)               skipFront.push({from: ox + r.x,         to: ox + r.x + r.width});
@@ -552,7 +545,63 @@
             const d = to - from, cz = (from + to) / 2;
             addWallSeg(WT, floorH, d + WT, ox + HW, wy, cz);
         });
+        
+        // ── For each entrance: fill the wall opening with a glass facade ──
+        const entranceGlassMat = new THREE.MeshStandardMaterial({
+            color: 0x88ddf0, transparent: true, opacity: 0.28,
+            roughness: 0.04, metalness: 0.15, side: THREE.DoubleSide
+        });
+        const entranceFrameColor = currentStyle === 'luxury' ? 0xaa8800 :
+                                   currentStyle === 'traditional' ? 0x5c3317 : 0x222222;
+        const entranceFrameMat = new THREE.MeshStandardMaterial({color: entranceFrameColor, roughness: 0.4, metalness: 0.3});
+        balconies.filter(r => r.type === 'entrance').forEach(r => {
+            const THRESH = 0.35;
+            const onFront = r.z < THRESH;
+            const onBack  = r.z + r.depth > HD - THRESH;
+            const onLeft  = r.x < THRESH;
+            const onRight = r.x + r.width > HW - THRESH;
+            if (!onFront && !onBack && !onLeft && !onRight) return;
 
+            const isH = onFront || onBack; // horizontal span (along X)
+            const span = isH ? r.width : r.depth;
+            const wallX = isH ? (ox + r.x + r.width / 2) : (onLeft ? ox : ox + HW);
+            const wallZ = isH ? (onFront ? oz : oz + HD)  : (oz + r.z + r.depth / 2);
+            const gW = isH ? span : WT + 0.02;
+            const gD = isH ? WT + 0.02 : span;
+            const panelH = floorH;
+
+            // Full-height glass fill
+            const gFill = new THREE.Mesh(new THREE.BoxGeometry(gW, panelH, gD), entranceGlassMat);
+            gFill.position.set(wallX, baseY + panelH / 2, wallZ);
+            scene.add(gFill); groups.walls.push(gFill);
+
+            // Thin vertical frame posts (left, center, right)
+            const postW = isH ? 0.06 : span;
+            const postD = isH ? span : 0.06;
+            [-span / 2, 0, span / 2].forEach(offset => {
+                const px = isH ? wallX + offset : wallX;
+                const pz = isH ? wallZ : wallZ + offset;
+                const post = new THREE.Mesh(new THREE.BoxGeometry(
+                    isH ? 0.06 : WT + 0.04,
+                    panelH, 
+                    isH ? WT + 0.04 : 0.06
+                ), entranceFrameMat);
+                post.position.set(px, baseY + panelH / 2, pz);
+                scene.add(post); groups.walls.push(post);
+            });
+            // Horizontal top rail
+            const topRail = new THREE.Mesh(new THREE.BoxGeometry(
+                isH ? span + 0.06 : WT + 0.04,
+                0.07,
+                isH ? WT + 0.04 : span + 0.06
+            ), entranceFrameMat);
+            topRail.position.set(wallX, baseY + panelH - 0.04, wallZ);
+            scene.add(topRail); groups.walls.push(topRail);
+        });
+       
+        
+
+        // ── For each balcony: glass balustrade + slab + brackets ──────
         // ── For each balcony: glass balustrade + slab + brackets ──────
         const railColor = currentStyle === 'luxury' ? 0xc9a84c :
                           currentStyle === 'traditional' ? 0x5c3d1e :
@@ -562,7 +611,8 @@
         const slabMat  = new THREE.MeshStandardMaterial({color: 0xb8bcc4, roughness: 0.88});
         const bracketMat = new THREE.MeshStandardMaterial({color: 0x555566, roughness: 0.7});
 
-        balconies.forEach(r => {
+       balconies.forEach(r => {
+            if (r.type === 'entrance') return; // Entrance has no balustrade/railing
             const rcx = ox + r.x + r.width / 2;
             const rcz = oz + r.z + r.depth / 2;
             const flY  = baseY;
@@ -570,7 +620,6 @@
             const openBack  = r.z + r.depth > HD - THRESH;
             const openLeft  = r.x < THRESH;
             const openRight = r.x + r.width > HW - THRESH;
-
             // Balcony slab
             const slab = new THREE.Mesh(new THREE.BoxGeometry(r.width + WT, 0.14, r.depth + WT), slabMat);
             slab.position.set(rcx, flY + 0.09, rcz);
