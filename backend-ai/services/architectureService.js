@@ -615,7 +615,7 @@ class OllamaChat {
    * @param {string}   requestId     For logging
    * @param {Array}    history       Optional prior turns [{role,content}]
    */
-  async chat(systemPrompt, userMessage, requestId, history = []) {
+  async chat(systemPrompt, userMessage, requestId, history = [], overrideOptions = {}) {
     try {
       logger.info(`[${requestId}] Ollama chat → model: ${this.model}, history: ${history.length} turns`);
 
@@ -636,6 +636,7 @@ class OllamaChat {
           num_predict:  1024,   // enough for detailed suggestions without runaway responses
           repeat_penalty: 1.1,  // discourages repetitive phrasing
           stop: ['<|end|>', '<|user|>', '[INST]'],  // phi3 / mistral stop tokens
+          ...overrideOptions,   // allow per-call overrides (e.g. deterministic feedback)
         },
       });
 
@@ -711,8 +712,8 @@ class ArchitectureService {
    * @param {string} requestId
    * @param {Array}  history  Optional [{role,content}] conversation turns
    */
-  async callLlamaAPI(systemPrompt, userMessage, requestId, history = []) {
-    return this.ollamaChat.chat(systemPrompt, userMessage, requestId, history);
+  async callLlamaAPI(systemPrompt, userMessage, requestId, history = [], overrideOptions = {}) {
+    return this.ollamaChat.chat(systemPrompt, userMessage, requestId, history, overrideOptions);
   }
 }
 

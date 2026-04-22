@@ -30,7 +30,26 @@ export const getDesignFeedback = async (req, res, next) => {
     logger.info(`[${requestId}] getDesignFeedback — project: "${projectData.name}", rooms: ${allRooms.length}`);
 
     const prompt   = buildPrompt(projectData);
-    const rawReply = await architectureService.callLlamaAPI('', prompt, requestId);
+
+    // Use a dedicated system prompt so the model stays in strict JSON mode
+    const systemPrompt = `You are an architectural design scoring system. You output ONLY valid JSON. No prose, no markdown, no explanation — just the raw JSON object requested. Do not change the JSON keys. Fill every value with a real analysis of the given project data.`;
+
+    let rawReply;
+    try {
+      // Deterministic options: temperature=0 → same input always produces same scores
+      rawReply = await architectureService.callLlamaAPI(systemPrompt, prompt, requestId, [], {
+        temperature:    0.0,
+        top_p:          1.0,
+        top_k:          1,
+        num_predict:    1500,
+        repeat_penalty: 1.0,
+      });
+    } catch (ollamaErr) {
+      // Ollama offline or model not pulled → use pure heuristic fallback silently
+      logger.warn(`[${requestId}] Ollama unavailable — heuristic fallback: ${ollamaErr.message}`);
+      const feedback = heuristicFallback(projectData);
+      return res.status(200).json({ success: true, requestId, feedback, timestamp: new Date().toISOString() });
+    }
 
     logger.info(`[${requestId}] Raw reply (first 400): ${rawReply.slice(0, 400)}`);
 
@@ -61,32 +80,41 @@ function buildPrompt(pd) {
   const hasKit    = roomTypes.includes('kitchen');
   const hasLiv    = roomTypes.includes('living');
 
-  const roomList = allRooms.slice(0, 10)
-    .map(r => `${r.name||r.type}(${r.type},${(r.width||0).toFixed(1)}x${(r.depth||0).toFixed(1)}m)`)
-    .join(', ');
+  const roomList = allRooms.slice(0, 12)
+    .map(r => `${r.name||r.type}(${r.type},${(r.width||0).toFixed(1)}x${(r.depth||0).toFixed(1)}m,doors:${(r.doors||[]).length},windows:${(r.windows||[]).length})`)
+    .join('; ');
 
-  // Seed realistic heuristic scores — the model should adjust them
-  const spS  = allRooms.length >= 4 ? 7 : allRooms.length >= 2 ? 5 : 3;
-  const flS  = doorCount >= 3 ? 7 : doorCount >= 1 ? 5 : 3;
-  const ltS  = winCount  >= 4 ? 8 : winCount  >= 1 ? 6 : 3;
-  const stS  = 6;
-  const fcS  = (hasBed && hasBath && hasKit) ? 7 : (hasBed || hasKit) ? 5 : 3;
-  const ovS  = Math.round((spS + flS + ltS + stS + fcS) / 5);
+  // Pre-compute deterministic heuristic scores for ALL 5 dimensions.
+  // The LLM is instructed to USE these exact numbers — not invent new ones.
+  // This gives consistent results while letting the LLM generate the text.
+  const spS = allRooms.length >= 6 ? 8 : allRooms.length >= 4 ? 7 : allRooms.length >= 2 ? 5 : 3;
+  const flS = doorCount >= 4 ? 8 : doorCount >= 2 ? 6 : doorCount >= 1 ? 4 : 2;
+  const ltS = winCount  >= 5 ? 9 : winCount  >= 3 ? 7 : winCount  >= 1 ? 5 : 2;
+  const stS = style === 'modern' || style === 'luxury' ? 7 : style === 'traditional' ? 7 : 6;
+  const fcS = (hasBed && hasBath && hasKit && hasLiv) ? 9
+            : (hasBed && hasBath && hasKit)           ? 7
+            : (hasBed || hasKit)                      ? 5 : 3;
+  const ovS = Math.round((spS + flS + ltS + stS + fcS) / 5);
 
-  // We embed a pre-filled JSON template. llama3 is very good at
-  // following concrete examples — it just needs to replace the values.
-  return `You are an architectural design critic. You must respond with ONLY valid JSON — nothing else.
-
-Analyse this ${type} building (${style} style):
-- Footprint: ${pd.totalWidth||0}m x ${pd.totalDepth||0}m = ${totalArea}m2
-- Floors: ${floors.length}, Rooms: ${allRooms.length}
-- Rooms: ${roomList||'none'}
+  return `PROJECT DATA:
+- Building: ${type}, style: ${style}
+- Footprint: ${pd.totalWidth||0}m x ${pd.totalDepth||0}m = ${totalArea}m2, Floors: ${floors.length}
+- Rooms (${allRooms.length} total): ${roomList||'none'}
+- Total doors: ${doorCount}, Total windows: ${winCount}
 - Has bedroom:${hasBed} bathroom:${hasBath} kitchen:${hasKit} living:${hasLiv}
-- Doors:${doorCount} Windows:${winCount}
 - Materials: walls=${pd.materials?.exterior?.walls||'unspecified'} floor=${pd.materials?.interior?.flooring||'unspecified'}
 
-Output ONLY this JSON (replace every value with your real analysis — keep all keys exactly as shown):
-{"overallScore":${ovS},"dimensions":{"spaceUtilisation":{"score":${spS},"title":"Space Utilisation","summary":"One sentence summary here.","detail":"Two sentences of specific advice about room sizes and space efficiency here."},"roomFlow":{"score":${flS},"title":"Room Flow and Circulation","summary":"One sentence summary here.","detail":"Two sentences about door placement and how people move between rooms here."},"naturalLight":{"score":${ltS},"title":"Natural Light","summary":"One sentence summary here.","detail":"Two sentences about window placement and light quality here."},"styleConsistency":{"score":${stS},"title":"Style Consistency","summary":"One sentence summary here.","detail":"Two sentences about how the ${style} style is reflected in this design here."},"functionalCompleteness":{"score":${fcS},"title":"Functional Completeness","summary":"One sentence summary here.","detail":"Two sentences about which essential rooms are present or missing here."}},"topIssues":["Specific issue 1 for this design","Specific issue 2 for this design","Specific issue 3 for this design"],"quickWins":["Specific quick win 1","Specific quick win 2","Specific quick win 3"]}`;
+SCORING RULES (you MUST use these exact integer scores — do not change them):
+- spaceUtilisation score = ${spS}
+- roomFlow score = ${flS}
+- naturalLight score = ${ltS}
+- styleConsistency score = ${stS}
+- functionalCompleteness score = ${fcS}
+- overallScore = ${ovS}
+
+Write specific, accurate summary and detail text based on the actual project data above.
+Respond with ONLY this JSON object (no prose, no markdown fences):
+{"overallScore":${ovS},"dimensions":{"spaceUtilisation":{"score":${spS},"title":"Space Utilisation","summary":"<one sentence>","detail":"<two sentences referencing actual room sizes>"},"roomFlow":{"score":${flS},"title":"Room Flow and Circulation","summary":"<one sentence>","detail":"<two sentences about the ${doorCount} door(s) and circulation>"},"naturalLight":{"score":${ltS},"title":"Natural Light","summary":"<one sentence>","detail":"<two sentences about the ${winCount} window(s) and light quality>"},"styleConsistency":{"score":${stS},"title":"Style Consistency","summary":"<one sentence>","detail":"<two sentences about how ${style} style is applied>"},"functionalCompleteness":{"score":${fcS},"title":"Functional Completeness","summary":"<one sentence>","detail":"<two sentences about which essential rooms are present or missing>"}},"topIssues":["<specific issue 1>","<specific issue 2>","<specific issue 3>"],"quickWins":["<specific quick win 1>","<specific quick win 2>","<specific quick win 3>"]}`;
 }
 
 // ── Parser — 4 strategies, always returns a valid object ─────────────────────

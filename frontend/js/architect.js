@@ -251,6 +251,37 @@
     return null;
   }
 
+  // ── Room Rotation (N/E/S/W facing direction) ──────────────────
+  const ROOM_DIRS=['N','E','S','W'];
+
+  function getRotateHandleAt(mx,my){
+    if(!selectedRoom)return false;
+    const scale=getScale(),off=getOffset(),room=selectedRoom;
+    const rx=off.x+room.x*scale,ry=off.y+room.z*scale,rw=room.width*scale;
+    const hx=rx+rw/2,hy=ry-28;
+    return Math.sqrt((mx-hx)**2+(my-hy)**2)<=13;
+  }
+
+  function rotateRoomCW(){
+    if(!selectedRoom)return;
+    selectedRoom.rotation=((selectedRoom.rotation||0)+90)%360;
+    const dir=ROOM_DIRS[(selectedRoom.rotation/90)%4];
+    showToast(`Room facing ${dir}`,'info');
+    drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
+    if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
+  }
+
+  function setRoomRotation(deg){
+    if(!selectedRoom)return;
+    selectedRoom.rotation=deg;
+    const dir=ROOM_DIRS[(deg/90)%4];
+    showToast(`Room facing ${dir}`,'info');
+    drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
+    if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
+  }
+  window.rotateRoomCW=rotateRoomCW;
+  window.setRoomRotation=setRoomRotation;
+
   function getDoorWindowCanvasPos(room,element,scale,off){
     const rx=off.x+room.x*scale,ry=off.y+room.z*scale,rw=room.width*scale,rh=room.depth*scale;
     const pos=element.pos??0.5;
@@ -335,6 +366,7 @@
       return;
     }
     if(currentTool==='select'){
+      if(getRotateHandleAt(mx,my)){rotateRoomCW();return;}
       const handle=getHandleAt(mx,my);
       if(handle){isResizing=true;resizeHandle=handle;dragStart={x:mx,y:my,origRoom:{...selectedRoom}};return;}
       const dwHit=getDoorWindowAt(mx,my);
@@ -434,7 +466,8 @@
       dragStart={x:mx,y:my};drawFloorPlan();markUnsaved();
     }else{
       const handle=getHandleAt(mx,my);
-      if(handle){const cm={nw:'nw-resize',n:'n-resize',ne:'ne-resize',w:'w-resize',e:'e-resize',sw:'sw-resize',s:'s-resize',se:'se-resize'};canvas.style.cursor=cm[handle]||'default';}
+      if(getRotateHandleAt(mx,my)){canvas.style.cursor='pointer';}
+      else if(handle){const cm={nw:'nw-resize',n:'n-resize',ne:'ne-resize',w:'w-resize',e:'e-resize',sw:'sw-resize',s:'s-resize',se:'se-resize'};canvas.style.cursor=cm[handle]||'default';}
       else if(getDoorWindowAt(mx,my))canvas.style.cursor='grab';
       else canvas.style.cursor=currentTool==='select'?(getRoomAt(mx,my)?'grab':'default'):(currentTool==='door'||currentTool==='window'?'cell':'crosshair');
       if(currentTool==='door'||currentTool==='window'){drawFloorPlan();drawPlacementPreview(mx,my,currentTool);}
@@ -743,6 +776,17 @@
           ctx.font=`10px 'Inter',sans-serif`;ctx.fillStyle=dimColor;
           ctx.fillText(`${room.width}x${room.depth}m`,rx+rw/2,ry+rh/2+8);
         }
+        // ── 2D facing direction arrow (shown when rotation is set) ──
+        if(isActive&&(room.rotation||0)!==0){
+          const rotRad=(room.rotation||0)*Math.PI/180;
+          const cx2=rx+rw/2,cy2=ry+rh/2;
+          const arrowLen=Math.min(rw,rh)*0.28;
+          ctx.save();ctx.translate(cx2,cy2);ctx.rotate(rotRad);
+          ctx.strokeStyle='rgba(0,212,200,0.7)';ctx.fillStyle='rgba(0,212,200,0.7)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.moveTo(0,-arrowLen);ctx.lineTo(0,arrowLen*0.5);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(-arrowLen*0.3,-arrowLen*0.55);ctx.lineTo(0,-arrowLen);ctx.lineTo(arrowLen*0.3,-arrowLen*0.55);ctx.fillStyle='rgba(0,212,200,0.7)';ctx.fill();
+          ctx.restore();
+        }
         // Staircase 2D: draw step lines
         if(room.type==='staircase'&&isActive){
           const steps=Math.max(5,Math.floor(rh/8));
@@ -787,6 +831,29 @@
       [[rx,ry],[rx+rw/2,ry],[rx+rw,ry],[rx,ry+rh/2],[rx+rw,ry+rh/2],[rx,ry+rh],[rx+rw/2,ry+rh],[rx+rw,ry+rh]].forEach(([hx,hy])=>{
         ctx.beginPath();ctx.arc(hx,hy,HANDLE_SIZE,0,Math.PI*2);ctx.fillStyle='#ff8c00';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
       });
+      // ── Rotation handle — teal circle above top-center handle ──
+      const rhx=rx+rw/2,rhy=ry-30;
+      // Dashed stem
+      ctx.beginPath();ctx.moveTo(rx+rw/2,ry-HANDLE_SIZE-1);ctx.lineTo(rhx,rhy+13);
+      ctx.strokeStyle='rgba(0,212,200,0.55)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      // Outer glow ring
+      ctx.beginPath();ctx.arc(rhx,rhy,15,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,212,200,0.08)';ctx.fill();
+      // Main circle
+      ctx.beginPath();ctx.arc(rhx,rhy,13,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,212,200,0.20)';ctx.fill();
+      ctx.strokeStyle='#00d4c8';ctx.lineWidth=2;ctx.stroke();
+      // Rotation arrow arc
+      ctx.beginPath();ctx.arc(rhx,rhy,6.5,Math.PI*0.2,Math.PI*1.8);
+      ctx.strokeStyle='#00d4c8';ctx.lineWidth=2;ctx.lineCap='round';ctx.stroke();ctx.lineCap='butt';
+      // Arrowhead
+      const _ae=Math.PI*1.8,_aex=rhx+6.5*Math.cos(_ae),_aey=rhy+6.5*Math.sin(_ae);
+      ctx.beginPath();ctx.moveTo(_aex-3.5,_aey-1.5);ctx.lineTo(_aex+0.5,_aey+3.5);ctx.lineTo(_aex+3.5,_aey-2.5);
+      ctx.strokeStyle='#00d4c8';ctx.lineWidth=1.8;ctx.lineJoin='round';ctx.stroke();ctx.lineJoin='miter';
+      // Direction label (N/E/S/W)
+      const _rdir=ROOM_DIRS[((room.rotation||0)/90)%4];
+      ctx.fillStyle='#00ffd0';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(_rdir,rhx,rhy+0.5);
     }
     ctx.textAlign='center';ctx.fillStyle=isDark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.3)';ctx.font=`bold 13px 'Inter',sans-serif`;ctx.textBaseline='top';
     ctx.fillText(`${projectData.name}  ·  ${STYLES[projectData.style]?.label||''} Style  ·  Floor ${activeFloorIdx+1}`,canvas.width/2,10);
@@ -931,6 +998,12 @@
       <div style="display:flex;gap:6px;margin-top:4px;">
         <button class="zoom-btn" style="flex:1;font-size:0.7rem;" onclick="clearRoomDoors()">Clear Doors</button>
         <button class="zoom-btn" style="flex:1;font-size:0.7rem;" onclick="clearRoomWindows()">Clear Windows</button>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72rem;color:#8899bb;display:block;margin-bottom:4px;"><i class="fas fa-compass" style="margin-right:4px;color:#00d4c8;"></i>Facing Direction</label>
+        <div style="display:flex;gap:4px;">
+          ${['N','E','S','W'].map((d,i)=>`<button class="zoom-btn" style="flex:1;font-size:0.78rem;font-weight:600;transition:all 0.15s;${(room.rotation||0)===i*90?'background:rgba(0,212,200,0.22);border-color:#00d4c8;color:#00d4c8;box-shadow:0 0 8px rgba(0,212,200,0.3);':''}" onclick="setRoomRotation(${i*90})">${d}</button>`).join('')}
+        </div>
       </div>`;
   }
   function hideRoomProperties(){const c=el('roomProperties');if(c)c.innerHTML='<p class="empty-msg">Select a room to edit</p>';}
@@ -2402,7 +2475,8 @@
     toggleWireframe,toggleFirstPerson,
     placeStaircaseAt,
     undo,redo,viewFloor,updateFloorIsoButtons,
-    requestSuggestion, clearChat,
+    requestSuggestion,clearChat,
+    rotateRoomCW,setRoomRotation,
   });
 
   // expose functions globally for HTML

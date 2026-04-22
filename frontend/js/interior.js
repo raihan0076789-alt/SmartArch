@@ -843,8 +843,31 @@
             swimming_pool: furnishSwimmingPool,
         }[room.type];
 
-        if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
-        else furnishDefault(cx, cz, fl, rw, rd);
+        // Apply room facing rotation by wrapping furniture in a rotated pivot group
+        const _rotDeg = room.rotation || 0;
+        if (_rotDeg !== 0) {
+          const _pivot = new THREE.Group();
+          _pivot.position.set(cx, 0, cz);
+          _pivot.rotation.y = -_rotDeg * Math.PI / 180;
+          scene.add(_pivot);
+          const _origSceneAdd = scene.add.bind(scene);
+          // Redirect furniture mesh adds into the pivot (offset to be relative to pivot center)
+          scene.add = function(obj) {
+            if (obj && obj.position) {
+              obj.position.x -= cx;
+              obj.position.z -= cz;
+            }
+            _pivot.add(obj);
+            return _pivot;
+          };
+          if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
+          else furnishDefault(cx, cz, fl, rw, rd);
+          scene.add = _origSceneAdd; // restore original
+          groups.furniture.push(_pivot);
+        } else {
+          if (fn) fn(cx, cz, fl, rw, rd, room, baseY);
+          else furnishDefault(cx, cz, fl, rw, rd);
+        }
     }
 
     // ── Staircase geometry ────────────────────────────────────
