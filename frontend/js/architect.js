@@ -1518,16 +1518,59 @@
   }
 
 
-  function autoLayout(){
-    const floor=projectData.floors[activeFloorIdx];floor.rooms=[];
-    const configs=[{type:'living',name:'Living Room',width:6,depth:5},{type:'kitchen',name:'Kitchen',width:4,depth:4},{type:'dining',name:'Dining Room',width:4,depth:4},{type:'bedroom',name:'Master Bedroom',width:5,depth:4},{type:'bedroom',name:'Bedroom 2',width:4,depth:4},{type:'bathroom',name:'Bathroom',width:3,depth:3}];
-    let cx=0.5,cz=0.5,rowH=0;
-    configs.forEach(c=>{
-      if(cx+c.width>projectData.totalWidth-0.5){cx=0.5;cz+=rowH+0.5;rowH=0;}
-      if(cz+c.depth<=projectData.totalDepth-0.5){floor.rooms.push({...c,x:cx,z:cz,height:floor.height||2.7,doors:[],windows:[]});cx+=c.width+0.5;rowH=Math.max(rowH,c.depth);}
-    });
-    selectedRoom=floor.rooms[0]||null;renderRooms();if(selectedRoom)showRoomProperties(selectedRoom);else hideRoomProperties();
-    updateInfoPanel();drawFloorPlan();markUnsaved();showToast('Auto layout applied!','success');
+function autoLayout(){
+    // Reset to single floor, no doors/windows
+    projectData.floors=[{name:'Ground Floor', height:2.7, rooms:[]}];
+    activeFloorIdx=0;
+    updateFloorTabs();
+    const floor=projectData.floors[0];
+    const W=projectData.totalWidth, D=projectData.totalDepth, rH=2.7;
+    const G=0.2; // small gap between rooms
+
+    /*
+      Layout plan (proportional):
+      ┌──────────────┬───────────┬──────────────┐
+      │  Living Room │  Hallway  │  Dining Room │  Row 1 (top 45%)
+      ├──────────────┼───────────┴──────────────┤
+      │   Bedroom    │  Kitchen  │  Office      │  Row 2 (middle 35%)
+      ├──────────────┴───────────┬──────────────┤
+      │         (open)           │  Bathroom    │  Row 2 bottom fill
+      └──────────────────────────┴──────────────┘
+    */
+
+    // Row heights
+    const row1H = Math.round(D * 0.42 * 100)/100;
+    const row2H = Math.round((D - row1H - G) * 100)/100;
+
+    // Column widths for row 1: Living(40%) | Hallway(20%) | Dining(40%)
+    const col1W = Math.round(W * 0.40 * 100)/100;
+    const col2W = Math.round(W * 0.20 * 100)/100;
+    const col3W = Math.round((W - col1W - col2W) * 100)/100;
+
+    // Column widths for row 2: Bedroom(40%) | Kitchen(35%) | Office(25%)
+    const bedW  = Math.round(W * 0.40 * 100)/100;
+    const kitW  = Math.round(W * 0.35 * 100)/100;
+    const bathW = Math.round((W - bedW - kitW) * 100)/100;
+
+    const rooms=[
+      // Row 1
+      {type:'living',   name:'Living Room', x:0,            z:0,          width:col1W, depth:row1H},
+      {type:'hallway',  name:'Hallway',     x:col1W+G,      z:0,          width:col2W-G, depth:row1H},
+      {type:'dining',   name:'Dining Room', x:col1W+col2W,  z:0,          width:col3W, depth:row1H},
+      // Row 2
+      {type:'bedroom',  name:'Bedroom',     x:0,            z:row1H+G,    width:bedW,  depth:row2H},
+      {type:'kitchen',  name:'Kitchen',     x:bedW+G,       z:row1H+G,    width:kitW-G,depth:row2H},
+      {type:'office',   name:'Office',      x:bedW+kitW,    z:row1H+G,    width:bathW*0.6, depth:row2H*0.55},
+      {type:'bathroom', name:'Bathroom',    x:bedW+kitW,    z:row1H+G+row2H*0.55+G, width:bathW*0.6, depth:row2H*0.45-G},
+    ];
+
+    rooms.forEach(r=>floor.rooms.push({...r, height:rH, doors:[], windows:[]}));
+
+    selectedRoom=floor.rooms[0]||null;
+    renderRooms();
+    if(selectedRoom)showRoomProperties(selectedRoom); else hideRoomProperties();
+    updateInfoPanel();drawFloorPlan();updateOverlapBtn();markUnsaved();
+    showToast('Auto layout applied!','success');
   }
   function clearAll(){if(!confirm('Clear all rooms on this floor?'))return;projectData.floors[activeFloorIdx].rooms=[];selectedRoom=null;renderRooms();hideRoomProperties();updateInfoPanel();drawFloorPlan();markUnsaved();}
 
@@ -1565,7 +1608,12 @@
     updateOverlapBtn();
     showToast(`Removed ${removed.length} overlapping room${removed.length>1?'s':''}`, 'success');
   }
-  function generateFloorPlan(){drawFloorPlan();showToast('Floor plan updated!','success');}
+  function generateFloorPlan(){
+    drawFloorPlan();
+    updateOverlapBtn();
+    updateInfoPanel();
+    showToast('Floor plan updated!','success');
+  }
   function generate3DModel(){setView('interior');setTimeout(()=>setInteriorSubView('3dmodel'),80);}
   function generateInterior(){setView('interior');setTimeout(()=>setInteriorSubView('interior'),80);}
 
@@ -2477,6 +2525,10 @@
     undo,redo,viewFloor,updateFloorIsoButtons,
     requestSuggestion,clearChat,
     rotateRoomCW,setRoomRotation,
+    // exposed for templates.js
+    updateFloorTabs,renderRooms,drawFloorPlan,markUnsaved,updateInfoPanel,
+    get activeFloorIdx(){ return activeFloorIdx; },
+    set activeFloorIdx(v){ activeFloorIdx = v; },
   });
 
   // expose functions globally for HTML
