@@ -1276,16 +1276,17 @@
         trackTop.position.set(cx, base + doorH + 0.08, _doorFaceZ);
         scene.add(trackTop); groups.furniture.push(trackTop);
 
-        // Two sliding door panels (animate along X axis)
+        // Two sliding door panels — pocket inward along Z so they never leave the lift boundary
         const doorLeft  = new THREE.Mesh(new THREE.BoxGeometry(panelW, doorH, 0.03), doorMat);
         const doorRight = new THREE.Mesh(new THREE.BoxGeometry(panelW, doorH, 0.03), doorMat);
         doorLeft.position.set(cx - panelW / 2, base + doorH / 2 + 0.08, _doorFaceZ);
         doorRight.position.set(cx + panelW / 2, base + doorH / 2 + 0.08, _doorFaceZ);
         scene.add(doorLeft);  groups.furniture.push(doorLeft);
         scene.add(doorRight); groups.furniture.push(doorRight);
-        // Store the adjusted base X after pivot offset is applied (used by animation)
         doorLeft.userData._baseX  = doorLeft.position.x;
         doorRight.userData._baseX = doorRight.position.x;
+        // Open = panels retract toward center from their outer edges (slide inward along X, capped to half panel width)
+        const _openSlide = panelW / 2 - 0.03;  // each panel slides inward by just under its own half-width
 
         // Door handle bars
         const handleMat = mat(0xc0ccd8, 0.08, 0.9);
@@ -1322,8 +1323,8 @@
         //   0.80–0.95  car travels down
         //   0.95–1.00  doors open at bottom → loop
         const CYCLE    = 10000; // ms
-        const closedX  = panelW / 2;      // panels touching at center
-        const openX    = rw / 2 - 0.07;   // panels slid to sides (near frame pillars)
+        const closedX  = 0;               // base position = closed (inner edges meet at cx)
+        const openX    = panelW - 0.06;               // fully open: each panel slides its full width to frame pillar   
         const _liftStart = Date.now();
         let _liftAnimActive = true;
 
@@ -1362,7 +1363,7 @@
                 // opening at bottom
                 doorOffset = closedX - _ease(_remap(t, 0.95, 1.00)) * (closedX - openX);
             }
-            doorLeft.position.x  = doorLeft.userData._baseX - doorOffset;
+            doorLeft.position.x  = doorLeft.userData._baseX  - doorOffset;
             doorRight.position.x = doorRight.userData._baseX + doorOffset;
 
             // ── Car vertical position ───────────────────────────

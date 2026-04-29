@@ -254,8 +254,10 @@
   // ── Room Rotation (N/E/S/W facing direction) ──────────────────
   const ROOM_DIRS=['N','E','S','W'];
 
+  const ROTATABLE_TYPES=['garage','lift','balcony','entrance','staircase'];
   function getRotateHandleAt(mx,my){
     if(!selectedRoom)return false;
+    if(!ROTATABLE_TYPES.includes(selectedRoom.type))return false;
     const scale=getScale(),off=getOffset(),room=selectedRoom;
     const rx=off.x+room.x*scale,ry=off.y+room.z*scale,rw=room.width*scale;
     const hx=rx+rw/2,hy=ry-28;
@@ -264,9 +266,12 @@
 
   function rotateRoomCW(){
     if(!selectedRoom)return;
-    selectedRoom.rotation=((selectedRoom.rotation||0)+90)%360;
+    const _prevRot=(selectedRoom.rotation||0);
+    selectedRoom.rotation=(_prevRot+90)%360;
     const dir=ROOM_DIRS[(selectedRoom.rotation/90)%4];
     if(selectedRoom.type==='lift'){const sx=selectedRoom._liftShaftX??selectedRoom.x,sz=selectedRoom._liftShaftZ??selectedRoom.z;projectData.floors.forEach(f=>{f.rooms.forEach(r=>{if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5)r.rotation=selectedRoom.rotation;});});}
+    // Staircase: swap width/depth each 90° turn so rectangle physically rotates
+    if(selectedRoom.type==='staircase'){const _t=selectedRoom.width;selectedRoom.width=selectedRoom.depth;selectedRoom.depth=_t;}
     showToast(`Room facing ${dir}`,'info');
     drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
     if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
@@ -274,14 +279,21 @@
 
   function setRoomRotation(deg){
     if(!selectedRoom)return;
+    const _prevRot=(selectedRoom.rotation||0);
     selectedRoom.rotation=deg;
     if(selectedRoom.type==='lift'){const sx=selectedRoom._liftShaftX??selectedRoom.x,sz=selectedRoom._liftShaftZ??selectedRoom.z;projectData.floors.forEach(f=>{f.rooms.forEach(r=>{if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5)r.rotation=deg;});});}
+    // Staircase: swap width/depth when crossing between portrait (0/180) and landscape (90/270)
+    if(selectedRoom.type==='staircase'){
+      const _wasHoriz=(_prevRot===90||_prevRot===270);
+      const _nowHoriz=(deg===90||deg===270);
+      if(_wasHoriz!==_nowHoriz){const _t=selectedRoom.width;selectedRoom.width=selectedRoom.depth;selectedRoom.depth=_t;}
+    }
     const dir=ROOM_DIRS[(deg/90)%4];
     showToast(`Room facing ${dir}`,'info');
     drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
     if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
   }
-  
+
   window.rotateRoomCW=rotateRoomCW;
   window.setRoomRotation=setRoomRotation;
 
@@ -441,6 +453,13 @@
       if(resizeHandle.includes('s'))depth=Math.max(minD,snap(orig.depth+dy));
       if(resizeHandle.includes('w')){const nw=Math.max(minW,snap(orig.width-dx));x=snap(orig.x+(orig.width-nw));width=nw;}
       if(resizeHandle.includes('n')){const nd=Math.max(minD,snap(orig.depth-dy));z=snap(orig.z+(orig.depth-nd));depth=nd;}
+      // Force square shape for lift: use the larger dimension and keep it equal
+      if(selectedRoom.type==='lift'){
+        const sq=Math.max(width,depth);
+        if(resizeHandle.includes('w'))x=snap(orig.x+(orig.width-sq));
+        if(resizeHandle.includes('n'))z=snap(orig.z+(orig.depth-sq));
+        width=sq;depth=sq;
+      }
       x=Math.max(0,Math.min(projectData.totalWidth-width,x));z=Math.max(0,Math.min(projectData.totalDepth-depth,z));
      // Only apply resize if it doesn't overlap another room (staircases can overlap non-staircases)
       const resizeOk=selectedRoom.type==='staircase'
@@ -796,18 +815,31 @@
           ctx.beginPath();ctx.moveTo(-arrowLen*0.3,-arrowLen*0.55);ctx.lineTo(0,-arrowLen);ctx.lineTo(arrowLen*0.3,-arrowLen*0.55);ctx.fillStyle='rgba(0,212,200,0.7)';ctx.fill();
           ctx.restore();
         }
-        // Staircase 2D: draw step lines
+        // Staircase 2D: draw step lines + arrow, rotated with room facing direction
         if(room.type==='staircase'&&isActive){
-          const steps=Math.max(5,Math.floor(rh/8));
+          const _sRot=(room.rotation||0)*Math.PI/180;
+          const _scx=rx+rw/2,_scy=ry+rh/2;
+          // Draw relative to center using rotated context
+          // Always treat staircase as portrait (tall=rh, wide=rw) then rotate
+          // For 90/270 swap the drawing dimensions so steps look correct
+          const _sHoriz=((room.rotation||0)===90||(room.rotation||0)===270);
+          const _dw=_sHoriz?rh:rw; // drawing width after rotation
+          const _dh=_sHoriz?rw:rh; // drawing height after rotation
+          ctx.save();
+          ctx.translate(_scx,_scy);
+          ctx.rotate(_sRot);
+          // Step lines (always horizontal in local space = perpendicular to travel)
+          const steps=Math.max(5,Math.floor(_dh/8));
           ctx.strokeStyle=isDark?'rgba(255,150,50,0.6)':'rgba(200,100,20,0.5)';ctx.lineWidth=1;
           for(let si=1;si<steps;si++){
-            const sy=ry+si*(rh/steps);
-            ctx.beginPath();ctx.moveTo(rx+2,sy);ctx.lineTo(rx+rw-2,sy);ctx.stroke();
+            const sy=-_dh/2+si*(_dh/steps);
+            ctx.beginPath();ctx.moveTo(-_dw/2+2,sy);ctx.lineTo(_dw/2-2,sy);ctx.stroke();
           }
-          // Arrow indicating direction
+          // Arrow (always points up in local space = toward N before rotation)
           ctx.strokeStyle='#ff9632';ctx.lineWidth=2;
-          ctx.beginPath();ctx.moveTo(rx+rw/2,ry+rh-6);ctx.lineTo(rx+rw/2,ry+6);ctx.stroke();
-          ctx.beginPath();ctx.moveTo(rx+rw/2-5,ry+12);ctx.lineTo(rx+rw/2,ry+6);ctx.lineTo(rx+rw/2+5,ry+12);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(0,_dh/2-6);ctx.lineTo(0,-_dh/2+6);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(-5,-_dh/2+12);ctx.lineTo(0,-_dh/2+6);ctx.lineTo(5,-_dh/2+12);ctx.stroke();
+          ctx.restore();
         }
         // Lift 2D: draw glass elevator symbol
         if(room.type==='lift'&&isActive){
@@ -840,7 +872,9 @@
       [[rx,ry],[rx+rw/2,ry],[rx+rw,ry],[rx,ry+rh/2],[rx+rw,ry+rh/2],[rx,ry+rh],[rx+rw/2,ry+rh],[rx+rw,ry+rh]].forEach(([hx,hy])=>{
         ctx.beginPath();ctx.arc(hx,hy,HANDLE_SIZE,0,Math.PI*2);ctx.fillStyle='#ff8c00';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
       });
-      // ── Rotation handle — teal circle above top-center handle ──
+      // ── Rotation handle — teal circle above top-center handle (only for rotatable types) ──
+      // ── Rotation handle — teal circle above top-center handle (rotatable types only) ──
+      if(ROTATABLE_TYPES.includes(room.type)){
       const rhx=rx+rw/2,rhy=ry-30;
       // Dashed stem
       ctx.beginPath();ctx.moveTo(rx+rw/2,ry-HANDLE_SIZE-1);ctx.lineTo(rhx,rhy+13);
@@ -863,6 +897,7 @@
       const _rdir=ROOM_DIRS[((room.rotation||0)/90)%4];
       ctx.fillStyle='#00ffd0';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(_rdir,rhx,rhy+0.5);
+      }
     }
     ctx.textAlign='center';ctx.fillStyle=isDark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.3)';ctx.font=`bold 13px 'Inter',sans-serif`;ctx.textBaseline='top';
     ctx.fillText(`${projectData.name}  ·  ${STYLES[projectData.style]?.label||''} Style  ·  Floor ${activeFloorIdx+1}`,canvas.width/2,10);
@@ -1008,12 +1043,7 @@
         <button class="zoom-btn" style="flex:1;font-size:0.7rem;" onclick="clearRoomDoors()">Clear Doors</button>
         <button class="zoom-btn" style="flex:1;font-size:0.7rem;" onclick="clearRoomWindows()">Clear Windows</button>
       </div>
-      <div style="margin-top:8px;">
-        <label style="font-size:0.72rem;color:#8899bb;display:block;margin-bottom:4px;"><i class="fas fa-compass" style="margin-right:4px;color:#00d4c8;"></i>Facing Direction</label>
-        <div style="display:flex;gap:4px;">
-          ${['N','E','S','W'].map((d,i)=>`<button class="zoom-btn" style="flex:1;font-size:0.78rem;font-weight:600;transition:all 0.15s;${(room.rotation||0)===i*90?'background:rgba(0,212,200,0.22);border-color:#00d4c8;color:#00d4c8;box-shadow:0 0 8px rgba(0,212,200,0.3);':''}" onclick="setRoomRotation(${i*90})">${d}</button>`).join('')}
-        </div>
-      </div>`;
+      ${ (['garage','lift','balcony','entrance','staircase'].includes(room.type)) ? ('<div style="margin-top:8px;"><label style="font-size:0.72rem;color:#8899bb;display:block;margin-bottom:4px;"><i class="fas fa-compass" style="margin-right:4px;color:#00d4c8;"></i>Facing Direction</label><div style="display:flex;gap:4px;">' + ['N','E','S','W'].map((d,i) => '<button class="zoom-btn" style="flex:1;font-size:0.78rem;font-weight:600;transition:all 0.15s;' + ((room.rotation||0)===i*90 ? 'background:rgba(0,212,200,0.22);border-color:#00d4c8;color:#00d4c8;box-shadow:0 0 8px rgba(0,212,200,0.3);' : '') + '" onclick="setRoomRotation(' + (i*90) + ')">' + d + '</button>').join('') + '</div></div>') : '' }`;
   }
   function hideRoomProperties(){const c=el('roomProperties');if(c)c.innerHTML='<p class="empty-msg">Select a room to edit</p>';}
   function updateRoomProp(prop,val){
