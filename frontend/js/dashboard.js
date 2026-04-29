@@ -2236,6 +2236,150 @@ async function loadArchConnections() {
         body.innerHTML = '<div style="text-align:center;padding:3rem;color:#f43f5e"><i class="fas fa-exclamation-circle" style="font-size:1.5rem"></i><div style="margin-top:1rem">Could not load connections.</div></div>';
     }
 }
+/* ── Connection Section Tabs ─────────────────────────────────────────── */
+function switchConnTab(tab) {
+    const activeTab   = document.getElementById('connTab-active');
+    const historyTab  = document.getElementById('connTab-history');
+    const activeBody  = document.getElementById('archConnectionsBody');
+    const historyBody = document.getElementById('archHistoryBody');
+    if (!activeTab || !historyTab) return;
+
+    const activeSel   = 'background:linear-gradient(135deg,rgba(139,92,246,0.25),rgba(0,212,200,0.15));color:#f1f5f9;border:1px solid rgba(139,92,246,0.3);';
+    const inactiveSel = 'background:transparent;color:#64748b;border:1px solid transparent;';
+
+    if (tab === 'active') {
+        activeTab.style.cssText  += activeSel;
+        historyTab.style.cssText += inactiveSel;
+        activeBody.style.display  = '';
+        historyBody.style.display = 'none';
+ } else {
+        historyTab.style.cssText  += activeSel;
+        activeTab.style.cssText   += inactiveSel;
+        activeBody.style.display  = 'none';
+        historyBody.style.display = '';
+        // Always fetch fresh data for history
+        historyBody.innerHTML = '<div style="text-align:center;padding:3rem;color:#94a3b8"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem"></i><div style="margin-top:1rem">Loading history...</div></div>';
+        fetch(`${CONN_API}/my`, { headers: connHeaders() })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    window._archConnectionsCache = d.data;
+                    renderArchHistory(d.data);
+                }
+            })
+            .catch(() => {
+                historyBody.innerHTML = '<div style="text-align:center;padding:3rem;color:#f43f5e">Could not load history.</div>';
+            });
+    }
+}
+
+function renderArchHistory(conns) {
+    const body = document.getElementById('archHistoryBody');
+    if (!body) return;
+
+    // Completed: accepted connections where architect's shared project is 'approved'
+    // Also catches connections with no architectProject but whose additionalProjects are approved
+    const completed = conns.filter(c => {
+        if (c.status !== 'accepted') return false;
+        if (c.architectProject && c.architectProject.status === 'approved') return true;
+        // Check additional projects too
+        if (c.additionalProjects && c.additionalProjects.some(ap =>
+            ap.architectProject && ap.architectProject.status === 'approved')) return true;
+        return false;
+    });
+
+    // Rejected: connections the architect declined
+    const rejected = conns.filter(c => c.status === 'rejected');
+
+    if (!completed.length && !rejected.length) {
+        body.innerHTML = `
+        <div style="text-align:center;padding:4rem 2rem;color:#94a3b8">
+            <i class="fas fa-history" style="font-size:2.5rem;color:rgba(139,92,246,0.3);display:block;margin-bottom:1rem"></i>
+            <div style="font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:0.5rem">No history yet</div>
+            <div style="font-size:0.875rem">Completed and declined projects will appear here.</div>
+        </div>`;
+        return;
+    }
+
+    const fmtDate = iso => {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    };
+
+    const getApprovedAt = (proj) => {
+        if (!proj || !proj.statusHistory) return null;
+        const entry = [...proj.statusHistory].reverse().find(h => h.status === 'approved');
+        return entry ? entry.changedAt : null;
+    };
+
+    const sectionTitle = (icon, label, color) => `
+        <div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 0.75rem;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${color};">
+            <i class="fas ${icon}" style="font-size:0.65rem;"></i>${label}
+        </div>`;
+
+    const card = (icon, iconColor, bg, border, rows) => `
+        <div style="background:${bg};border:1px solid ${border};border-radius:12px;padding:0.9rem 1.1rem;margin-bottom:0.65rem;display:flex;gap:0.85rem;align-items:flex-start;">
+            <div style="width:36px;height:36px;border-radius:9px;background:rgba(255,255,255,0.04);border:1px solid ${border};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas ${icon}" style="color:${iconColor};font-size:0.85rem;"></i>
+            </div>
+            <div style="min-width:0;flex:1;">${rows}</div>
+        </div>`;
+
+    let html = '';
+
+    if (completed.length) {
+        html += sectionTitle('fa-check-circle', 'Completed Projects', '#10b981');
+        completed.forEach(c => {
+            const client = c.client || {};
+
+            // Collect all completed project entries from this connection
+            const completedProjects = [];
+            if (c.architectProject && c.architectProject.status === 'approved') {
+                completedProjects.push({ proj: c.architectProject, label: c.projectName || 'Primary Project' });
+            }
+            (c.additionalProjects || []).forEach(ap => {
+                if (ap.architectProject && ap.architectProject.status === 'approved') {
+                    completedProjects.push({ proj: ap.architectProject, label: ap.projectName || 'Additional Project' });
+                }
+            });
+
+            completedProjects.forEach(({ proj, label }) => {
+                const approvedAt = getApprovedAt(proj);
+                html += card('fa-check-circle', '#10b981', 'rgba(16,185,129,0.05)', 'rgba(16,185,129,0.18)', `
+                    <div style="font-weight:700;font-size:0.88rem;color:#f1f5f9;margin-bottom:0.15rem;">${escHtml(proj.name || label)}</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.3rem;">
+                        <i class="fas fa-user" style="font-size:0.65rem;margin-right:0.3rem;color:#64748b;"></i>${escHtml(client.name || client.email || 'Client')}
+                    </div>
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                        <span style="font-size:0.7rem;color:#10b981;display:flex;align-items:center;gap:0.25rem;">
+                            <i class="fas fa-calendar-check" style="font-size:0.62rem;"></i> Completed ${fmtDate(approvedAt)}
+                        </span>
+                        ${proj.type ? `<span style="font-size:0.7rem;color:#64748b;display:flex;align-items:center;gap:0.25rem;"><i class="fas fa-tag" style="font-size:0.62rem;"></i> ${escHtml(proj.type)}</span>` : ''}
+                    </div>`);
+            });
+        });
+    }
+
+    if (rejected.length) {
+        html += sectionTitle('fa-times-circle', 'Declined Requests', '#f43f5e');
+        rejected.forEach(c => {
+            const client = c.client || {};
+            html += card('fa-times-circle', '#f43f5e', 'rgba(244,63,94,0.04)', 'rgba(244,63,94,0.18)', `
+                <div style="font-weight:700;font-size:0.88rem;color:#f1f5f9;margin-bottom:0.15rem;">${escHtml(client.name || client.email || 'Client')}</div>
+                <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.3rem;">${escHtml(c.projectName || 'No project specified')}</div>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                    <span style="font-size:0.7rem;color:#f43f5e;display:flex;align-items:center;gap:0.25rem;">
+                        <i class="fas fa-calendar-times" style="font-size:0.62rem;"></i> Declined ${fmtDate(c.updatedAt)}
+                    </span>
+                    ${c.introMessage ? `<span style="font-size:0.7rem;color:#64748b;font-style:italic;">"${escHtml(c.introMessage.slice(0,60))}${c.introMessage.length>60?'…':''}"</span>` : ''}
+                </div>`);
+        });
+    }
+
+    body.innerHTML = html;
+}
+window.switchConnTab   = switchConnTab;
+window.renderArchHistory = renderArchHistory;
 
 function updateArchConnBadge(conns) {
     const badge   = document.getElementById('archConnBadge');
@@ -2259,12 +2403,20 @@ function renderArchConnections(conns) {
         </div>`;
         return;
     }
-
+    
     // Split into pending first, then accepted/rejected
-    const pending  = conns.filter(c => c.status === 'pending');
-    const accepted = conns.filter(c => c.status === 'accepted');
-    const rejected = conns.filter(c => c.status === 'rejected');
-    const ordered  = [...pending, ...accepted, ...rejected];
+  const pending  = conns.filter(c => c.status === 'pending');
+    const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000);
+    const accepted = conns.filter(c => {
+        if (c.status !== 'accepted') return false;
+        if (!c.architectProject || c.architectProject.status !== 'approved') return true;
+        const history = c.architectProject.statusHistory || [];
+        const approvedEntry = [...history].reverse().find(h => h.status === 'approved');
+        if (!approvedEntry) return true;
+        return new Date(approvedEntry.changedAt).getTime() > twoDaysAgo;
+    }); 
+    const ordered  = [...pending, ...accepted];
+    // rejected go to History tab only
 
   // Expand connections: primary card + one card per additional project
     const allCards = [];
@@ -2341,8 +2493,9 @@ function archConnCardHtml(c, additionalProject) {
         ? `<span style="background:#ef4444;color:#fff;border-radius:20px;padding:1px 7px;font-size:0.68rem;font-weight:700;margin-left:0.35rem;">${c.unreadByArchitect} new</span>`
         : '';
 
-    return `
-    <div onclick="${isAdditional ? `openAdditionalProjectModal('${c._id}','${additionalProject.projectId}')` : `openConnDetailModal('${c._id}')`}"
+   return `
+    <div ${isAdditional ? `data-additional-project-id="${additionalProject.projectId}"` : ''}
+        onclick="${isAdditional ? `openAdditionalProjectModal('${c._id}','${additionalProject.projectId}')` : `openConnDetailModal('${c._id}')`}"
         style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:var(--r-lg,14px);overflow:hidden;transition:all 0.25s cubic-bezier(0.22,1,0.36,1);cursor:pointer;position:relative;"
         onmouseover="this.style.transform='translateY(-4px)';this.style.borderColor='rgba(139,92,246,0.28)';this.style.background='rgba(139,92,246,0.04)';this.style.boxShadow='0 20px 60px rgba(0,0,0,0.4),0 0 30px rgba(139,92,246,0.06)';"
         onmouseout="this.style.transform='';this.style.borderColor='rgba(255,255,255,0.07)';this.style.background='rgba(255,255,255,0.04)';this.style.boxShadow='';">
@@ -2499,6 +2652,50 @@ function additionalProjectStepperHtml(c, ap) {
         const assignedDate = ap.assignedAt
             ? new Date(ap.assignedAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
             : '';
+       const apStatus = ap.acceptanceStatus || 'pending';
+
+        // ── Declined state ────────────────────────────────────────────────────
+        if (apStatus === 'declined') {
+            return `
+            <div style="margin-top:0.75rem;padding:0.6rem 0.9rem;background:rgba(244,63,94,0.05);border:1px dashed rgba(244,63,94,0.2);border-radius:10px;" onclick="event.stopPropagation()">
+                <div style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;display:flex;align-items:center;gap:0.35rem;">
+                    <i class="fas fa-tasks" style="font-size:0.55rem;color:#f43f5e;"></i> Project Progress
+                </div>
+                <div style="font-size:0.75rem;color:#f43f5e;display:flex;align-items:center;gap:0.35rem;">
+                    <i class="fas fa-times-circle" style="font-size:0.7rem;"></i> You declined this project request
+                </div>
+            </div>`;
+        }
+
+        // ── Pending state — show Accept / Decline buttons ─────────────────────
+        if (apStatus === 'pending') {
+            return `
+            <div style="margin-top:0.75rem;padding:0.6rem 0.9rem;background:rgba(245,158,11,0.05);border:1px dashed rgba(245,158,11,0.22);border-radius:10px;" onclick="event.stopPropagation()">
+                <div style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;display:flex;align-items:center;gap:0.35rem;">
+                    <i class="fas fa-tasks" style="font-size:0.55rem;color:#f59e0b;"></i> Project Progress
+                </div>
+                <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.6rem;">
+                    <i class="fas fa-clock" style="font-size:0.65rem;color:rgba(245,158,11,0.6);margin-right:0.3rem;"></i>
+                    New request${assignedDate ? ' · received ' + assignedDate : ''} — awaiting your response
+                </div>
+                <div style="display:flex;gap:0.5rem;">
+                    <button onclick="event.stopPropagation();respondToAdditionalProject('${c._id}','${ap.projectId}','accept')"
+                        style="flex:1;padding:0.45rem 0.6rem;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:700;font-size:0.72rem;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.35rem;transition:all 0.2s;"
+                        onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(16,185,129,0.3)';"
+                        onmouseout="this.style.transform='';this.style.boxShadow='';">
+                        <i class="fas fa-check"></i> Accept
+                    </button>
+                    <button onclick="event.stopPropagation();respondToAdditionalProject('${c._id}','${ap.projectId}','decline')"
+                        style="flex:1;padding:0.45rem 0.6rem;background:rgba(244,63,94,0.08);color:#f43f5e;font-weight:700;font-size:0.72rem;border:1px solid rgba(244,63,94,0.25);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.35rem;transition:all 0.2s;"
+                        onmouseover="this.style.background='rgba(244,63,94,0.18)';"
+                        onmouseout="this.style.background='rgba(244,63,94,0.08)';">
+                        <i class="fas fa-times"></i> Decline
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        // ── Accepted state — show Start in Workspace ──────────────────────────
         return `
         <div style="margin-top:0.75rem;padding:0.6rem 0.9rem;background:rgba(0,212,200,0.04);border:1px dashed rgba(0,212,200,0.18);border-radius:10px;" onclick="event.stopPropagation()">
             <div style="font-size:0.6rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;display:flex;align-items:center;gap:0.35rem;">
@@ -3132,6 +3329,47 @@ async function respondToConnection(connId, action) {
         loadArchConnections();
     } catch (err) {
         if (typeof showToast === 'function') showToast(err.message || 'Action failed.', 'error');
+    }
+}
+
+async function respondToAdditionalProject(connectionId, projectId, action) {
+    try {
+        const r = await fetch(`http://localhost:5000/api/connections/${connectionId}/additional-projects/${projectId}/respond`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
+            body: JSON.stringify({ action })
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.message);
+
+        if (action === 'decline') {
+            // Find and animate-remove the card containing this project
+            const allCards = document.querySelectorAll('[data-additional-project-id]');
+            let removed = false;
+            allCards.forEach(card => {
+                if (card.dataset.additionalProjectId === String(projectId)) {
+                    card.style.transition = 'all 0.35s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.92)';
+                    setTimeout(() => card.remove(), 350);
+                    removed = true;
+                }
+            });
+
+            // Fallback: if cards don't have data attributes, reload
+            if (!removed) {
+                if (typeof loadConnections === 'function') loadConnections();
+                else if (typeof renderConnectionCards === 'function') renderConnectionCards();
+            }
+
+            if (typeof showToast === 'function') showToast('Project declined. Client has been notified.', 'info');
+        } else {
+            if (typeof showToast === 'function') showToast('Project accepted. Client has been notified.', 'success');
+            if (typeof loadConnections === 'function') loadConnections();
+            else if (typeof renderConnectionCards === 'function') renderConnectionCards();
+        }
+    } catch(err) {
+        if (typeof showToast === 'function') showToast(err.message || 'Could not respond to project.', 'error');
     }
 }
 

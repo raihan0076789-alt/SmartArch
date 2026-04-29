@@ -1643,13 +1643,27 @@
 
             <!-- ─── Client Connections Section ───────────────────────────── -->
             <div class="content-section" id="connectionsSection">
-                <div style="margin-bottom:1.5rem">
+                <div style="margin-bottom:1.25rem">
                     <h2 style="font-size:1.25rem;font-weight:800;color:#f1f5f9;margin-bottom:0.25rem">Client Requests</h2>
                     <p style="color:#94a3b8;font-size:0.875rem">Review and respond to client connection requests</p>
                 </div>
+
+                <!-- Tab bar -->
+                <div style="display:flex;gap:0.35rem;margin-bottom:1.25rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:4px;">
+                    <button id="connTab-active" onclick="switchConnTab('active')"
+                        style="flex:1;padding:0.5rem 1rem;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,rgba(139,92,246,0.25),rgba(0,212,200,0.15));color:#f1f5f9;border:1px solid rgba(139,92,246,0.3);">
+                        <i class="fas fa-user-friends" style="margin-right:0.35rem;font-size:0.72rem;"></i>Active Requests
+                    </button>
+                    <button id="connTab-history" onclick="switchConnTab('history')"
+                        style="flex:1;padding:0.5rem 1rem;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#64748b;">
+                        <i class="fas fa-history" style="margin-right:0.35rem;font-size:0.72rem;"></i>History
+                    </button>
+                </div>
+
                 <div id="archConnectionsBody">
                     <div style="text-align:center;padding:3rem;color:#94a3b8"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem"></i><div style="margin-top:1rem">Loading...</div></div>
                 </div>
+                <div id="archHistoryBody" style="display:none;"></div>
 
                 <!-- Architect Chat Modal -->
                 <div class="connect-backdrop" id="archChatBackdrop" onclick="closeArchChatModal(event)" style="z-index:1100">

@@ -13,9 +13,11 @@ const messageSchema = new mongoose.Schema({
 
 const additionalProjectSchema = new mongoose.Schema({
     projectId:          { type: mongoose.Schema.Types.ObjectId, ref: 'ClientProject', required: true },
-    projectName:        { type: String, default: '' },             // snapshot name for display
+    projectName:        { type: String, default: '' },
     assignedAt:         { type: Date, default: Date.now },
-    architectProjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null }  // linked architect design project
+    architectProjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+    acceptanceStatus:   { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+    respondedAt:        { type: Date, default: null }
 }, { _id: false });
 
 const connectionSchema = new mongoose.Schema({

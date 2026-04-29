@@ -266,6 +266,7 @@
     if(!selectedRoom)return;
     selectedRoom.rotation=((selectedRoom.rotation||0)+90)%360;
     const dir=ROOM_DIRS[(selectedRoom.rotation/90)%4];
+    if(selectedRoom.type==='lift'){const sx=selectedRoom._liftShaftX??selectedRoom.x,sz=selectedRoom._liftShaftZ??selectedRoom.z;projectData.floors.forEach(f=>{f.rooms.forEach(r=>{if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5)r.rotation=selectedRoom.rotation;});});}
     showToast(`Room facing ${dir}`,'info');
     drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
     if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
@@ -274,11 +275,13 @@
   function setRoomRotation(deg){
     if(!selectedRoom)return;
     selectedRoom.rotation=deg;
+    if(selectedRoom.type==='lift'){const sx=selectedRoom._liftShaftX??selectedRoom.x,sz=selectedRoom._liftShaftZ??selectedRoom.z;projectData.floors.forEach(f=>{f.rooms.forEach(r=>{if(r!==selectedRoom&&r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5)r.rotation=deg;});});}
     const dir=ROOM_DIRS[(deg/90)%4];
     showToast(`Room facing ${dir}`,'info');
     drawFloorPlan();showRoomProperties(selectedRoom);markUnsaved();
     if(currentView==='interior'&&typeof initInteriorView==='function')initInteriorView(projectData);
   }
+  
   window.rotateRoomCW=rotateRoomCW;
   window.setRoomRotation=setRoomRotation;
 
@@ -431,8 +434,8 @@
       const scale=getScale(),orig=dragStart.origRoom;
       const dx=(mx-dragStart.x)/scale,dy=(my-dragStart.y)/scale;
       const minSize=1.5;
-      const minW=(selectedRoom.type==='garage')?6:minSize;
-      const minD=(selectedRoom.type==='garage')?6:minSize;
+      const minW=(selectedRoom.type==='garage')?6:(selectedRoom.type==='swimming_pool')?8:minSize;
+      const minD=(selectedRoom.type==='garage')?6:(selectedRoom.type==='swimming_pool')?4:minSize;
       let{x,z,width,depth}=orig;
       if(resizeHandle.includes('e'))width=Math.max(minW,snap(orig.width+dx));
       if(resizeHandle.includes('s'))depth=Math.max(minD,snap(orig.depth+dy));
@@ -442,6 +445,8 @@
      // Only apply resize if it doesn't overlap another room (staircases can overlap non-staircases)
       const resizeOk=selectedRoom.type==='staircase'
         ?!getOverlappingRooms(x,z,width,depth,selectedRoom).filter(r=>r.type==='staircase').length
+        :selectedRoom.type==='lift'
+        ?!getOverlappingRooms(x,z,width,depth,selectedRoom).filter(r=>r.type==='lift').length
         :!getOverlappingRooms(x,z,width,depth,selectedRoom).length;
       if(resizeOk){
         selectedRoom.x=x;selectedRoom.z=z;selectedRoom.width=width;selectedRoom.depth=depth;
@@ -453,9 +458,12 @@
       const nx=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,snap(selectedRoom.x+dx)));
       const nz=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,snap(selectedRoom.z+dz)));
       // Try full move first; if blocked try axis-by-axis (slide along walls)
-    if(selectedRoom.type==='staircase'){
+      if(selectedRoom.type==='staircase'){
         const stairConflicts=getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).filter(r=>r.type==='staircase');
         if(!stairConflicts.length){selectedRoom.x=nx;selectedRoom.z=nz;}
+      } else if(selectedRoom.type==='lift'){
+        const liftConflicts=getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).filter(r=>r.type==='lift');
+        if(!liftConflicts.length){selectedRoom.x=nx;selectedRoom.z=nz;}
       } else if(!getOverlappingRooms(nx,nz,selectedRoom.width,selectedRoom.depth,selectedRoom).length){
         selectedRoom.x=nx;selectedRoom.z=nz;
       } else if(!getOverlappingRooms(nx,selectedRoom.z,selectedRoom.width,selectedRoom.depth,selectedRoom).length){
@@ -584,7 +592,8 @@
     while(tries++<100){
       x=snap(Math.random()*Math.max(0,projectData.totalWidth-liftW));
       z=snap(Math.random()*Math.max(0,projectData.totalDepth-liftD));
-      if(!getOverlappingRooms(x,z,liftW,liftD,null).length){placed=true;break;}
+      // Lift can overlap any room except another lift
+      if(!getOverlappingRooms(x,z,liftW,liftD,null).filter(r=>r.type==='lift').length){placed=true;break;}
     }
     if(!placed){showToast('⚠️ No free space for lift — resize canvas or remove a room','error');return;}
     // Place lift extension on ALL floors at the exact same x,z
@@ -604,7 +613,7 @@
 
   function addRoomOfType(type){
     const floor=projectData.floors[activeFloorIdx];
-   const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2},hallway:{w:6,d:2},entrance:{w:5,d:4},swimming_pool:{w:8,d:14}};
+   const defaults={living:{w:6,d:5},bedroom:{w:4,d:4},bathroom:{w:3,d:3},kitchen:{w:4,d:4},dining:{w:4,d:4},office:{w:4,d:4},garage:{w:6,d:6},balcony:{w:5,d:2},hallway:{w:6,d:2},entrance:{w:5,d:4},swimming_pool:{w:8,d:4}};
     const dim=defaults[type]||{w:4,d:4};
     let x=0,z=0,placed=false,tries=0;
     while(tries++<80){
@@ -619,7 +628,7 @@
   }
 
   function addRoom(){addRoomOfType('bedroom');}
-  function deleteRoom(room){const floor=projectData.floors[activeFloorIdx];const idx=floor.rooms.indexOf(room);if(idx===-1)return;floor.rooms.splice(idx,1);selectedRoom=null;renderRooms();hideRoomProperties();updateInfoPanel();drawFloorPlan();markUnsaved();}
+  function deleteRoom(room){const floor=projectData.floors[activeFloorIdx];const idx=floor.rooms.indexOf(room);if(idx===-1)return;floor.rooms.splice(idx,1);if(room.type==='lift'){const sx=room._liftShaftX??room.x,sz=room._liftShaftZ??room.z;projectData.floors.forEach((f,fi)=>{if(fi===activeFloorIdx)return;f.rooms=f.rooms.filter(r=>!(r.type==='lift'&&Math.abs((r._liftShaftX??r.x)-sx)<0.5&&Math.abs((r._liftShaftZ??r.z)-sz)<0.5));});}selectedRoom=null;renderRooms();hideRoomProperties();updateInfoPanel();drawFloorPlan();markUnsaved();}
   function deleteRoomByIndex(idx){deleteRoom(projectData.floors[activeFloorIdx].rooms[idx]);}
   function duplicateRoom(idx){
     const room=projectData.floors[activeFloorIdx].rooms[idx];
@@ -1019,11 +1028,21 @@
         return;
       }
     }
+    if(selectedRoom.type==='swimming_pool'&&(prop==='width'||prop==='depth')){
+      const minPoolW=8,minPoolD=4;
+      const minVal=prop==='width'?minPoolW:minPoolD;
+      if(val<minVal){
+        showToast(`⚠️ Swimming pool ${prop} cannot be less than ${minVal}m — minimum pool size is 8×4m.`,'error');
+        const inputs=document.querySelectorAll('#roomProperties input[type="number"]');
+        inputs.forEach(inp=>{if((prop==='width'&&inp.closest('.form-group')?.querySelector('label')?.textContent==='Width (m)')||(prop==='depth'&&inp.closest('.form-group')?.querySelector('label')?.textContent==='Depth (m)'))inp.value=selectedRoom[prop];});
+        return;
+      }
+    }
     selectedRoom[prop]=val;
     if(['width','depth','x','z'].includes(prop)){
       if(selectedRoom.type==='garage'){selectedRoom.width=Math.max(6,selectedRoom.width);selectedRoom.depth=Math.max(6,selectedRoom.depth);}
+      else if(selectedRoom.type==='swimming_pool'){selectedRoom.width=Math.max(8,selectedRoom.width);selectedRoom.depth=Math.max(4,selectedRoom.depth);}
       else{selectedRoom.width=Math.max(1,selectedRoom.width);selectedRoom.depth=Math.max(1,selectedRoom.depth);}
-      selectedRoom.x=Math.max(0,Math.min(projectData.totalWidth-selectedRoom.width,selectedRoom.x));
       selectedRoom.z=Math.max(0,Math.min(projectData.totalDepth-selectedRoom.depth,selectedRoom.z));
     }
     // ── Lift shaft sync: propagate width/depth/height to all matching lift rooms on other floors ──

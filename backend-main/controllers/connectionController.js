@@ -77,6 +77,36 @@ exports.getStatusWithArchitect = async (req, res) => {
     }
 };
 
+// ─── GET /api/connections/status/:architectId/projects ────────────────────────
+// Returns connectionId + all additional projects assigned to this connection.
+exports.getConnectionProjects = async (req, res) => {
+    try {
+        const conn = await Connection.findOne({
+            client:    req.user._id,
+            architect: req.params.architectId,
+            status:    'accepted'
+       }).select('_id project projectName additionalProjects');
+
+        if (!conn) return res.json({ success: true, data: [], connectionId: null });
+
+    const projects = conn.additionalProjects.map(ap => ({
+            projectId:   ap.projectId,
+            projectName: ap.projectName,
+            assignedAt:  ap.assignedAt
+        }));
+
+        // Include the primary project (from the initial connection request) if it exists
+        const primaryProject = conn.project
+            ? [{ projectId: conn.project, projectName: conn.projectName || 'Primary Project', isPrimary: true }]
+            : [];
+
+        res.json({ success: true, connectionId: conn._id, data: [...primaryProject, ...projects] });
+    } catch (err) {
+        console.error('getConnectionProjects error:', err);
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+};
+
 // ─── GET /api/connections/my ──────────────────────────────────────────────────
 // Returns all connections for the current user (client or architect).
 exports.getMyConnections = async (req, res) => {
@@ -149,13 +179,21 @@ exports.getMyConnections = async (req, res) => {
             return res.json({ success: true, data: enriched });
         }
 
-        // Populate client project brief so frontend can read project.status
+        // Populate client project brief + additionalProjects names
         const enrichedClient = await Promise.all(conns.map(async (conn) => {
             const obj = conn.toObject();
             if (conn.project) {
                 const proj = await Project.findById(conn.project).select('name status type').lean();
                 obj.project = proj || obj.project;
             }
+            // Enrich additionalProjects with acceptanceStatus already stored on schema
+            // Just ensure projectName is available (already snapshotted on assign)
+            obj.additionalProjects = (conn.additionalProjects || []).map(ap => ({
+                projectId:        ap.projectId,
+                projectName:      ap.projectName,
+                assignedAt:       ap.assignedAt,
+                acceptanceStatus: ap.acceptanceStatus || 'pending'
+            }));
             return obj;
         }));
         res.json({ success: true, data: enrichedClient });
@@ -511,6 +549,42 @@ exports.cancelRequest = async (req, res) => {
     }
 };
 
+// ─── PUT /api/connections/:id/additional-projects/:projectId/respond ──────────
+// Architect accepts or declines an additional project assignment.
+exports.respondToAdditionalProject = async (req, res) => {
+    try {
+        const { action } = req.body; // 'accept' | 'decline'
+        if (!['accept', 'decline'].includes(action)) {
+            return res.status(400).json({ success: false, message: 'Action must be accept or decline.' });
+        }
+
+        const conn = await Connection.findOne({ _id: req.params.id, architect: req.user._id });
+        if (!conn) return res.status(404).json({ success: false, message: 'Connection not found.' });
+
+        const apExists = conn.additionalProjects.some(p => String(p.projectId) === String(req.params.projectId));
+        if (!apExists) return res.status(404).json({ success: false, message: 'Additional project not found.' });
+
+        if (action === 'decline') {
+            // Permanently remove from DB so it never reappears
+            conn.additionalProjects = conn.additionalProjects.filter(
+                p => String(p.projectId) !== String(req.params.projectId)
+            );
+        } else {
+            // Accept — update status in place
+            const ap = conn.additionalProjects.find(p => String(p.projectId) === String(req.params.projectId));
+            ap.acceptanceStatus = 'accepted';
+            ap.respondedAt = new Date();
+        }
+
+        conn.unreadByClient += 1;
+        await conn.save();
+
+        res.json({ success: true, message: action === 'accept' ? 'Project accepted.' : 'Project declined.' });
+    } catch (err) {
+        console.error('respondToAdditionalProject error:', err);
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+};
 // ─── PATCH /api/connections/:id/additional-projects/:projectId/link ───────────
 // Architect links their design project to an additional project request.
 exports.linkAdditionalProject = async (req, res) => {

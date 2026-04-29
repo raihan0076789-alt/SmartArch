@@ -1055,21 +1055,22 @@
             scene.add(vRail2); groups.furniture.push(vRail2);
         });
 
-        // ── Glass panels (3 sides — front is door) ────────────
+        // ── Glass panels (3 sides — -Z face is always the door/front) ──
+        // The pivot system in the caller rotates the entire room to the correct
+        // facing direction, so we always build with door on the -Z face.
         const glassMat = new THREE.MeshPhysicalMaterial({
             color: 0xaee4f8, transparent: true, opacity: 0.2,
             roughness: 0.0, metalness: 0.08,
             transmission: 0.88, side: THREE.DoubleSide,
         });
-        // Left panel
+        // Left panel (±X sides, spanning full depth Z)
         const leftPanel = new THREE.Mesh(new THREE.BoxGeometry(0.03, floorH - 0.1, rd - 0.12), glassMat);
         leftPanel.position.set(cx - rw / 2 + 0.05, base + floorH / 2, cz);
         scene.add(leftPanel); groups.furniture.push(leftPanel);
-        // Right panel
-        const rightPanel = leftPanel.clone();
+        const rightPanel = new THREE.Mesh(new THREE.BoxGeometry(0.03, floorH - 0.1, rd - 0.12), glassMat);
         rightPanel.position.set(cx + rw / 2 - 0.05, base + floorH / 2, cz);
         scene.add(rightPanel); groups.furniture.push(rightPanel);
-        // Back wall (semi-mirror)
+        // Back wall on +Z (opposite of door face at -Z)
         const backMat = new THREE.MeshPhysicalMaterial({ color: 0x8ab8d8, roughness: 0.04, metalness: 0.55, transparent: true, opacity: 0.55 });
         const backPanel = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.12, floorH - 0.1, 0.03), backMat);
         backPanel.position.set(cx, base + floorH / 2, cz + rd / 2 - 0.05);
@@ -1245,51 +1246,52 @@
             scene.add(sk); groups.furniture.push(sk);
         });
 
-        // ── Sliding door — inset fully inside the front glass wall ──
-        // doorZ: pushed inward by glass thickness (0.04) + small gap so panels never clip glass
-        const doorZ     = cz - rd / 2 + 0.10;   // inset from front glass edge
-        const panelW    = (rw - 0.14) / 2;       // half-width of each panel
-        const doorH     = floorH * 0.90;
-        const doorMat   = new THREE.MeshPhysicalMaterial({ color: 0xc8e4f8, transparent: true, opacity: 0.45, roughness: 0.02, metalness: 0.5 });
+        // ── Sliding door — always on the -Z face (front/north) ──────
+        // The pivot system rotates the entire lift to the correct facing direction.
+        // We always build with door on the -Z face; no manual rotation needed here.
+        const _doorFaceZ = cz - rd / 2 + 0.10;   // inset from front (-Z) edge
+        const panelW     = (rw - 0.14) / 2;
+        const doorH      = floorH * 0.90;
+        const doorMat    = new THREE.MeshPhysicalMaterial({ color: 0xc8e4f8, transparent: true, opacity: 0.45, roughness: 0.02, metalness: 0.5 });
         const doorFrameMat = mat(0xa8b8c8, 0.12, 0.84);
 
-        // Top frame bar (above doors, inside lift)
+        // Top frame bar
         const dframeTop = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.05, 0.03), doorFrameMat);
-        dframeTop.position.set(cx, base + floorH - 0.05, doorZ);
+        dframeTop.position.set(cx, base + floorH - 0.05, _doorFaceZ);
         scene.add(dframeTop); groups.furniture.push(dframeTop);
 
         // Side frame pillars
         [-1, 1].forEach(side => {
             const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.04, doorH, 0.03), doorFrameMat);
-            pillar.position.set(cx + side * (rw / 2 - 0.06), base + doorH / 2 + 0.08, doorZ);
+            pillar.position.set(cx + side * (rw / 2 - 0.06), base + doorH / 2 + 0.08, _doorFaceZ);
             scene.add(pillar); groups.furniture.push(pillar);
         });
 
-        // Bottom door track (inside, flush with floor)
+        // Bottom & top door tracks
         const trackMat = mat(0x8890a0, 0.2, 0.78);
         const track = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.025, 0.05), trackMat);
-        track.position.set(cx, base + 0.012, doorZ);
+        track.position.set(cx, base + 0.012, _doorFaceZ);
         scene.add(track); groups.furniture.push(track);
-
-        // Top door track
         const trackTop = new THREE.Mesh(new THREE.BoxGeometry(rw - 0.10, 0.025, 0.05), trackMat);
-        trackTop.position.set(cx, base + doorH + 0.08, doorZ);
+        trackTop.position.set(cx, base + doorH + 0.08, _doorFaceZ);
         scene.add(trackTop); groups.furniture.push(trackTop);
 
-        // Two sliding door panels — created here, animated below
+        // Two sliding door panels (animate along X axis)
         const doorLeft  = new THREE.Mesh(new THREE.BoxGeometry(panelW, doorH, 0.03), doorMat);
-        const doorRight = doorLeft.clone();
-        // Closed position: panels meet at center
-        doorLeft.position.set(cx - panelW / 2, base + doorH / 2 + 0.08, doorZ);
-        doorRight.position.set(cx + panelW / 2, base + doorH / 2 + 0.08, doorZ);
+        const doorRight = new THREE.Mesh(new THREE.BoxGeometry(panelW, doorH, 0.03), doorMat);
+        doorLeft.position.set(cx - panelW / 2, base + doorH / 2 + 0.08, _doorFaceZ);
+        doorRight.position.set(cx + panelW / 2, base + doorH / 2 + 0.08, _doorFaceZ);
         scene.add(doorLeft);  groups.furniture.push(doorLeft);
         scene.add(doorRight); groups.furniture.push(doorRight);
+        // Store the adjusted base X after pivot offset is applied (used by animation)
+        doorLeft.userData._baseX  = doorLeft.position.x;
+        doorRight.userData._baseX = doorRight.position.x;
 
-        // Door handle bars (thin strip on each panel)
+        // Door handle bars
         const handleMat = mat(0xc0ccd8, 0.08, 0.9);
         [-1, 1].forEach(side => {
             const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, doorH * 0.25, 0.025), handleMat);
-            handle.position.set(cx + side * 0.05, base + doorH * 0.5, doorZ - 0.02);
+            handle.position.set(cx + side * 0.05, base + doorH * 0.5, _doorFaceZ - 0.02);
             scene.add(handle); groups.furniture.push(handle);
         });
 
@@ -1360,8 +1362,8 @@
                 // opening at bottom
                 doorOffset = closedX - _ease(_remap(t, 0.95, 1.00)) * (closedX - openX);
             }
-            doorLeft.position.x  = cx - doorOffset;
-            doorRight.position.x = cx + doorOffset;
+            doorLeft.position.x  = doorLeft.userData._baseX - doorOffset;
+            doorRight.position.x = doorRight.userData._baseX + doorOffset;
 
             // ── Car vertical position ───────────────────────────
             let carT;

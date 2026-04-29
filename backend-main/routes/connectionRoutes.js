@@ -9,6 +9,7 @@ const { protect, authorize } = require('../middleware/auth');
 const {
     sendRequest,
     getStatusWithArchitect,
+    getConnectionProjects,
     getMyConnections,
     respondToRequest,
     getMessages,
@@ -18,6 +19,7 @@ const {
     getAdditionalProjectBrief,
     assignProject,
     linkAdditionalProject,
+    respondToAdditionalProject,
     cancelRequest,
     deleteRejected
 } = require('../controllers/connectionController');
@@ -49,6 +51,7 @@ const chatUpload = multer({
 // ── Client routes ──────────────────────────────────────────────────────────────
 router.post('/request',                         protect, authorize('client'),              sendRequest);
 router.get('/status/:architectId',              protect, authorize('client'),              getStatusWithArchitect);
+router.get('/status/:architectId/projects', protect, authorize('client'), getConnectionProjects);
 router.post('/:id/assign-project',              protect, authorize('client'),              assignProject);
 router.delete('/:id',                           protect, authorize('client'),              cancelRequest);       // cancel pending request
 router.delete('/:id/rejected',                  protect, authorize('client'),              deleteRejected);      // delete rejected card
@@ -59,6 +62,7 @@ router.put('/:id/respond',                      protect, authorize('architect'),
 router.get('/:id/project-brief',                protect, authorize('architect'),           getProjectBrief);
 router.get('/:id/additional-projects/:projectId',        protect, authorize('architect'), getAdditionalProjectBrief);
 router.patch('/:id/additional-projects/:projectId/link', protect, authorize('architect'), linkAdditionalProject);
+router.put('/:id/additional-projects/:projectId/respond', protect, authorize('architect'), respondToAdditionalProject);
 
 // Chat — text
 router.get('/:id/messages',                     protect, authorize('client', 'architect'), getMessages);

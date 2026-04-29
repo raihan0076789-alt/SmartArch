@@ -998,16 +998,24 @@ async function openConnectModal(archId, archName, archSpec, archAvatar) {
         listEl.innerHTML = '<div style="color:var(--slate);font-size:0.83rem">Could not load projects.</div>';
     }
 }
+/* ── Assign Additional Project Panel ─────────────────────────────────── */
 async function openConnectAnotherProject(archId, archName, archSpec, archAvatar) {
     closeModalDirect();
 
-    // We already have an accepted connection — fetch its connectionId
+    // Fetch connectionId + already-assigned projects
     var connectionId = null;
+    var assignedProjectIds = [];
     try {
-        var sr = await fetch(CLIENT_API + '/connections/status/' + archId, { headers: authHeaders() });
+        var sr = await fetch(CLIENT_API + '/connections/status/' + archId + '/projects', { headers: authHeaders() });
         var sd = await sr.json();
         connectionId = sd.connectionId || null;
+        assignedProjectIds = (sd.data || []).map(function(p) { return String(p.projectId); });
     } catch(e) {}
+
+    if (!connectionId) {
+        showToast('No active connection found.', 'error');
+        return;
+    }
 
     connectState.architectId   = archId;
     connectState.architectName = archName;
@@ -1016,107 +1024,116 @@ async function openConnectAnotherProject(archId, archName, archSpec, archAvatar)
     var fallback = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(archName) + '&background=8b5cf6&color=fff&bold=true';
     document.getElementById('connectArchAvatar').src = archAvatar || fallback;
     document.getElementById('connectArchAvatar').onerror = function() { this.src = fallback; };
-    document.getElementById('connectArchName').textContent  = archName;
-    document.getElementById('connectArchSpec').textContent  = archSpec || 'Architect';
+    document.getElementById('connectArchName').textContent = archName;
+    document.getElementById('connectArchSpec').textContent = archSpec || 'Architect';
     document.getElementById('connectIntroMsg').value = '';
-    document.getElementById('connectIntroMsg').placeholder = 'Describe the new project you want to work on...';
+    document.getElementById('connectIntroMsg').placeholder = 'Optional note for the architect...';
 
+    // ── Render assigned projects list ──────────────────────────────────
     var listEl = document.getElementById('connectProjectList');
     listEl.innerHTML = '<div style="color:var(--slate);font-size:0.85rem"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
     document.getElementById('connectBackdrop').classList.add('open');
     document.body.style.overflow = 'hidden';
 
-    // Load only unconnected projects
-    try {
-        var pr  = await fetch(CLIENT_API + '/client/projects', { headers: authHeaders() });
-        var pd  = await pr.json();
-        var freeProjects = (pd.data || []).filter(function(p) { return !p.hasAcceptedConnection; });
+    // Change modal title
+    var titleEl = document.querySelector('#connectBackdrop .connect-modal-title');
+    if (titleEl) titleEl.textContent = 'Assign Project to ' + archName;
 
-        var createNewHtml = '<div style="margin-top:0.5rem">' +
+    try {
+        var pr = await fetch(CLIENT_API + '/client/projects', { headers: authHeaders() });
+        var pd = await pr.json();
+        var allProjects = pd.data || [];
+        // Exclude projects already assigned to this architect
+        var availableProjects = allProjects.filter(function(p) {
+            return assignedProjectIds.indexOf(String(p._id)) === -1;
+        });
+
+        // Build assigned-projects summary
+        var assignedHtml = '';
+        if (assignedProjectIds.length) {
+            var assignedNames = assignedProjectIds.map(function(id) {
+                var found = allProjects.find(function(p){ return String(p._id) === id; });
+                return found ? (found.title || found.name) : 'Project';
+            });
+            assignedHtml =
+                '<div style="margin-bottom:0.75rem;padding:0.55rem 0.75rem;border-radius:8px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.18)">' +
+                '<div style="font-size:0.72rem;font-weight:700;color:var(--violet);margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em">Already Assigned</div>' +
+                assignedNames.map(function(n){
+                    return '<div style="font-size:0.8rem;color:var(--slate);padding:0.15rem 0"><i class="fas fa-check-circle" style="color:#10b981;margin-right:0.35rem;font-size:0.72rem"></i>' + esc(n) + '</div>';
+                }).join('') +
+                '</div>';
+        }
+
+        var createNewHtml =
+            '<div style="margin-top:0.5rem">' +
             '<button onclick="closeConnectModal();openCreateProject()" ' +
             'style="width:100%;padding:0.5rem;border:1.5px dashed rgba(139,92,246,0.4);border-radius:9px;background:rgba(139,92,246,0.05);color:var(--violet);font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem">' +
             '<i class="fas fa-plus" style="font-size:0.7rem"></i> Create a new project brief</button></div>';
 
-        if (!freeProjects.length) {
-            listEl.innerHTML =
+        if (!availableProjects.length) {
+            listEl.innerHTML = assignedHtml +
                 '<div style="color:var(--slate);font-size:0.83rem;padding:0.5rem 0;line-height:1.6">' +
                 '<i class="fas fa-info-circle" style="color:var(--violet);margin-right:0.4rem"></i>' +
-                'All your projects already have an architect. Create a new project brief to share with ' + esc(archName) + '.' +
+                'All your projects are already assigned to ' + esc(archName) + '.' +
                 '</div>' + createNewHtml;
         } else {
-            listEl.innerHTML = freeProjects.map(function(p) {
-                return '<label class="project-pick-item">' +
-                    '<input type="radio" name="connectProject" value="' + p._id + '" onchange="selectConnectProject(\'' + p._id + '\')">' +
-                    '<span class="project-pick-label">' +
-                        '<span class="project-pick-name">' + esc(p.title || p.name) + '</span>' +
-                        '<span class="project-pick-type">' + esc(p.projectType || p.type || 'project') + '</span>' +
-                    '</span>' +
-                '</label>';
-            }).join('') +
-            '<label class="project-pick-item">' +
-                '<input type="radio" name="connectProject" value="" checked onchange="selectConnectProject(null)">' +
-                '<span class="project-pick-label"><span class="project-pick-name" style="color:var(--slate)">No specific project</span></span>' +
-            '</label>' + createNewHtml;
+            listEl.innerHTML = assignedHtml +
+                '<div style="font-size:0.72rem;font-weight:700;color:var(--slate);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.04em">Select a project to assign</div>' +
+                availableProjects.map(function(p) {
+                    var archBadge = p.architectName
+                        ? '<span style="display:inline-flex;align-items:center;gap:0.25rem;margin-top:0.2rem;font-size:0.7rem;color:#f59e0b;font-weight:600">' +
+                          '<i class="fas fa-user-tie" style="font-size:0.65rem"></i>' +
+                          esc(p.architectName) + ' is working on this' +
+                          '</span>'
+                        : '';
+                    return '<label class="project-pick-item">' +
+                        '<input type="radio" name="connectProject" value="' + p._id + '" onchange="selectConnectProject(\'' + p._id + '\')">' +
+                        '<span class="project-pick-label">' +
+                            '<span class="project-pick-name">' + esc(p.title || p.name) + '</span>' +
+                            '<span class="project-pick-type">' + esc(p.projectType || p.type || 'project') + '</span>' +
+                            archBadge +
+                        '</span>' +
+                    '</label>';
+                }).join('') + createNewHtml;
         }
     } catch(e) {
         listEl.innerHTML = '<div style="color:var(--slate);font-size:0.83rem">Could not load projects.</div>';
     }
 
-    // Override the send button to post a chat message instead of a new connection request
+    // ── Override send button ───────────────────────────────────────────
     var sendBtn = document.getElementById('connectSendBtn');
-    if (sendBtn && connectionId) {
-        sendBtn._origOnclick = sendBtn.onclick;
-        sendBtn.onclick = null;
-        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Architect';
-        sendBtn.onclick = async function() {
-            var msg = document.getElementById('connectIntroMsg').value.trim();
-            var projId = connectState.selectedProjectId;
-            // Build message text
-            var projLabel = '';
-            if (projId) {
-                var allProj = window._cachedClientProjects || [];
-                var matched = allProj.find(function(p){ return p._id === projId; });
-                if (matched) projLabel = matched.title || matched.name || '';
-            }
-            var fullMsg = projLabel
-                ? '[New Project Request] ' + projLabel + (msg ? '\n' + msg : '')
-                : (msg || '[New Project Request]');
+    if (!sendBtn) return;
+    sendBtn._origOnclick = sendBtn.onclick;
+    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Assign Project';
+    sendBtn.onclick = async function() {
+        var projId = connectState.selectedProjectId;
+        if (!projId) { showToast('Please select a project to assign.', 'error'); return; }
 
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
-            try {
-                var r = await fetch(CLIENT_API + '/connections/' + connectionId + '/messages', {
-                    method: 'POST',
-                    headers: authHeaders(),
-                    body: JSON.stringify({ text: fullMsg })
-                });
-                var d = await r.json();
-                if (!d.success) throw new Error(d.message);
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Assigning...';
+        try {
+            var r = await fetch(CLIENT_API + '/connections/' + connectionId + '/assign-project', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ projectId: projId })
+            });
+            var d = await r.json();
+            if (!d.success) throw new Error(d.message);
 
-                // Also formally assign the project to the connection
-                if (projId) {
-                    await fetch(CLIENT_API + '/connections/' + connectionId + '/assign-project', {
-                        method: 'POST',
-                        headers: authHeaders(),
-                        body: JSON.stringify({ projectId: projId })
-                    }).catch(() => {}); // non-blocking — chat message already sent
-                }
-
-                document.getElementById('connectBackdrop').classList.remove('open');
-                document.body.style.overflow = '';
-                showToast('Project request sent to ' + archName + ' via chat!', 'success');
-            } catch(err) {
-                showToast(err.message || 'Could not send message.', 'error');
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Architect';
-            }
-            // Restore original onclick for future normal use
-            sendBtn.onclick = sendBtn._origOnclick || null;
-            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Request';
+            document.getElementById('connectBackdrop').classList.remove('open');
+            document.body.style.overflow = '';
+            showToast('Project assigned to ' + archName + ' successfully!', 'success');
+        } catch(err) {
+            showToast(err.message || 'Could not assign project.', 'error');
             sendBtn.disabled = false;
-        };
-    }
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Assign Project';
+        }
+        // Restore for normal use
+        sendBtn.onclick = sendBtn._origOnclick || null;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Request';
+        sendBtn.disabled = false;
+    };
 }
 
 function selectConnectProject(id) {
@@ -1191,7 +1208,7 @@ async function refreshModalConnectBtn(archId) {
                 assignBtn.id = 'modalAssignNewBtn';
                 assignBtn.className = 'connect-modal-cta';
                 assignBtn.style.cssText = 'margin-top:0.6rem;background:rgba(139,92,246,0.12);border:1.5px solid rgba(139,92,246,0.35);color:var(--violet);';
-                assignBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Connect Another Project';
+                assignBtn.innerHTML = '<i class="fas fa-layer-group"></i> Assign Another Project';
                 assignBtn.onclick = function() {
                     var cachedArchId   = btn.closest('[data-arch-id]') ? btn.closest('[data-arch-id]').dataset.archId : null;
                     var cachedArchName = btn.dataset.name || document.getElementById('modalConnectBtn').dataset.name || '';
@@ -1375,6 +1392,53 @@ function _isCompletedWithArchitect(conn) {
     });
 }
 
+// Returns all project entries (primary + additional) for a connection
+function _getConnProjects(conn) {
+    var projects = [];
+    if (conn.projectName) {
+        projects.push({
+            name:   conn.projectName,
+            status: conn.project && conn.project.status ? conn.project.status : null,
+            isPrimary: true
+        });
+    }
+    (conn.additionalProjects || []).forEach(function(ap) {
+        projects.push({
+            name:             ap.projectName || 'Additional Project',
+            acceptanceStatus: ap.acceptanceStatus || 'pending',
+            assignedAt:       ap.assignedAt,
+            isPrimary:        false
+        });
+    });
+    return projects;
+}
+
+// Check if conn has ANY incomplete project (primary or additional pending/accepted)
+function _hasIncompleteProject(conn) {
+    var archCompleted = _isCompletedWithArchitect(conn);
+    if (!archCompleted) return true; // primary not completed
+    // Check if any additional is still pending acceptance or accepted but not complete
+    return (conn.additionalProjects || []).some(function(ap) {
+        return ap.acceptanceStatus === 'pending' || ap.acceptanceStatus === 'accepted';
+    });
+}
+
+// Check if conn has ANY completed project
+function _hasCompletedProject(conn) {
+    return _isCompletedWithArchitect(conn);
+}
+
+// Count pending additional project requests
+function _pendingAdditionalCount(conns) {
+    var count = 0;
+    conns.forEach(function(c) {
+        (c.additionalProjects || []).forEach(function(ap) {
+            if (ap.acceptanceStatus === 'pending') count++;
+        });
+    });
+    return count;
+}
+
 function switchConnTab(tab) {
     activeConnTab = tab;
     ['active','completed','pending','history'].forEach(function(t) {
@@ -1385,9 +1449,11 @@ function switchConnTab(tab) {
 }
 
 function _updateConnTabBadges(conns) {
-    var active    = conns.filter(function(c) { return c.status === 'accepted' && !_isCompletedWithArchitect(c); });
-    var completed = conns.filter(function(c) { return _isCompletedWithArchitect(c); });
+    var accepted = conns.filter(function(c) { return c.status === 'accepted'; });
+    var active    = accepted.filter(function(c) { return _hasIncompleteProject(c); });
+    var completed = accepted.filter(function(c) { return _hasCompletedProject(c); });
     var pending   = conns.filter(function(c) { return c.status === 'pending'; });
+    var pendingAdditional = _pendingAdditionalCount(conns);
 
     var set = function(id, count) {
         var el = document.getElementById('connTabBadge-' + id);
@@ -1397,7 +1463,7 @@ function _updateConnTabBadges(conns) {
     };
     set('active',    active.length);
     set('completed', completed.length);
-    set('pending',   pending.length);
+    set('pending',   pending.length + pendingAdditional);
     set('history',   conns.length);
 }
 
@@ -1405,11 +1471,13 @@ function _renderConnTab(tab) {
     var body  = document.getElementById('connectionsBody');
     var conns = _allConnections;
     if (tab === 'active') {
-        _renderConnCards(conns.filter(function(c) { return c.status === 'accepted' && !_isCompletedWithArchitect(c); }), body, false);
+        var active = conns.filter(function(c) { return c.status === 'accepted' && _hasIncompleteProject(c); });
+        _renderConnCards(active, body, false);
     } else if (tab === 'completed') {
-        _renderConnCards(conns.filter(function(c) { return _isCompletedWithArchitect(c); }), body, true);
+        var completed = conns.filter(function(c) { return c.status === 'accepted' && _hasCompletedProject(c); });
+        _renderConnCards(completed, body, true);
     } else if (tab === 'pending') {
-        _renderConnCards(conns.filter(function(c) { return c.status === 'pending'; }), body, false);
+        _renderConnPending(conns, body);
     } else {
         _renderConnHistory(conns, body);
     }
@@ -1417,18 +1485,16 @@ function _renderConnTab(tab) {
 
 function _renderConnCards(conns, body, isCompleted) {
     if (!conns.length) {
-        var icon = isCompleted ? 'check-circle' : (activeConnTab === 'pending' ? 'clock' : 'user-friends');
-        var title = isCompleted ? 'No completed projects yet'
-            : activeConnTab === 'pending' ? 'No pending requests' : 'No active connections';
-        var sub = isCompleted ? 'Completed project connections will appear here.'
-            : activeConnTab === 'pending' ? 'Requests you send to architects will appear here.'
-            : 'Browse architects and click Connect to send a request.';
+        var icon  = isCompleted ? 'check-circle' : 'user-friends';
+        var title = isCompleted ? 'No completed projects yet' : 'No active connections';
+        var sub   = isCompleted ? 'Completed project connections will appear here.'
+                                : 'Browse architects and click Connect to send a request.';
         body.innerHTML =
             '<div class="conn-empty">' +
                 '<div class="conn-empty-icon"><i class="fas fa-' + icon + '"></i></div>' +
                 '<div class="conn-empty-title">' + title + '</div>' +
                 '<div class="conn-empty-sub">' + sub + '</div>' +
-                (activeConnTab === 'active' ? '<button class="btn-primary" onclick="showView(\'architects\')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;"><i class="fas fa-search"></i> Find Architects</button>' : '') +
+                (!isCompleted ? '<button class="btn-primary" onclick="showView(\'architects\')" style="margin-top:1.5rem;padding:0.65rem 1.5rem;border-radius:9px;font-size:0.875rem;font-weight:700;border:none;cursor:pointer;"><i class="fas fa-search"></i> Find Architects</button>' : '') +
             '</div>';
         return;
     }
@@ -1440,50 +1506,186 @@ function _renderConnCards(conns, body, isCompleted) {
         var onlineDot = isOnlineConn
             ? '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#10b981;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 5px #10b981;display:inline-block;flex-shrink:0;"></span>Online</span>'
             : '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;color:#64748b;margin-top:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#475569;display:inline-block;flex-shrink:0;"></span>Offline</span>';
-        var projHtml    = c.projectName ? '<div class="conn-project"><i class="fas fa-folder" style="font-size:0.65rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</div>' : '';
-        var intro       = c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '';
+
         var unreadBadge = c.unreadByClient > 0 ? '<span class="conn-unread-badge">' + c.unreadByClient + ' new</span>' : '';
-        var completedBadgeHtml = isCompleted ? '<div class="conn-completed-badge"><i class="fas fa-check-circle"></i> Project Completed</div>' : '';
 
-        var statusMap = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected' };
-        var statusCls = { pending: 'status-pending', accepted: 'status-accepted', rejected: 'status-rejected' };
+        // ── Build projects list ────────────────────────────────────────────
+        var projectsHtml = '';
+        if (isCompleted) {
+            // Show completed projects from shares
+            var archId = String(arch._id || arch.id || '');
+            var completedShares = _allShares.filter(function(s) {
+                var sid = String(s.sharedBy && (s.sharedBy._id || s.sharedBy.id || s.sharedBy));
+                var proj = s.project;
+                return sid === archId && proj && (proj.status === 'approved' || proj.status === 'completed');
+            });
+            var completedProjHtml = completedShares.map(function(s) {
+                return '<div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;margin-bottom:0.2rem;">' +
+                    '<i class="fas fa-check-circle" style="color:#10b981;font-size:0.65rem;"></i>' +
+                    '<span style="color:#f1f5f9;font-weight:600;">' + esc((s.project && s.project.name) || 'Project') + '</span>' +
+                    '<span style="color:#10b981;font-size:0.68rem;font-weight:700;">Completed</span>' +
+                    '</div>';
+            }).join('');
+            // Also show incomplete additional projects if any
+           // Build set of project names already shown as completed to avoid duplicates
+            var completedNames = completedShares.map(function(s) {
+                return ((s.project && s.project.name) || '').toLowerCase().trim();
+            });
 
-        var actionBtn = '';
-        if (c.status === 'accepted') {
-            actionBtn = '<button class="conn-chat-btn" onclick="openChatModal(\'' + c._id + '\',\'' + esc(arch.name) + '\',\'' + avatar + '\')">' +
-                '<i class="fas fa-comments"></i> Chat ' + unreadBadge + '</button>';
-        } else if (c.status === 'pending') {
-            actionBtn = '<div class="conn-pending-note"><i class="fas fa-clock"></i> Awaiting response</div>' +
-                '<button class="conn-cancel-btn" onclick="cancelConnectionRequest(\'' + c._id + '\',\'' + esc(arch.name) + '\')">' +
-                '<i class="fas fa-times"></i> Cancel Request</button>';
+            var incompleteAdditional = (c.additionalProjects || []).filter(function(ap) {
+                if (ap.acceptanceStatus !== 'pending' && ap.acceptanceStatus !== 'accepted') return false;
+                // Skip if same project is already shown as completed above
+                var apName = (ap.projectName || '').toLowerCase().trim();
+                return completedNames.indexOf(apName) === -1;
+            }).map(function(ap) {
+                var color = ap.acceptanceStatus === 'pending' ? '#f59e0b' : '#00d4c8';
+                var label = ap.acceptanceStatus === 'pending' ? 'Awaiting architect' : 'In Progress';
+                return '<div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;margin-bottom:0.2rem;">' +
+                    '<i class="fas fa-folder" style="color:' + color + ';font-size:0.65rem;"></i>' +
+                    '<span style="color:#f1f5f9;font-weight:600;">' + esc(ap.projectName) + '</span>' +
+                    '<span style="color:' + color + ';font-size:0.68rem;font-weight:700;">' + label + '</span>' +
+                    '</div>';
+            }).join('');
+            if (completedProjHtml || incompleteAdditional) {
+                projectsHtml = '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;">' +
+                    completedProjHtml + incompleteAdditional + '</div>';
+            }
         } else {
-            actionBtn =
-                '<div class="conn-rejected-note"><i class="fas fa-times-circle"></i> Request not accepted</div>' +
-                '<div class="conn-rejected-actions">' +
-                    '<button class="conn-rerequest-btn" onclick="rerequestConnection(\'' + c._id + '\',\'' + esc(arch.id || arch._id) + '\',\'' + esc(arch.name) + '\',\'' + esc(arch.specialization || '') + '\',\'' + avatar + '\')">' +
-                        '<i class="fas fa-redo"></i> Re-request</button>' +
-                    '<button class="conn-delete-btn" onclick="deleteRejectedConnection(\'' + c._id + '\',\'' + esc(arch.name) + '\')">' +
-                        '<i class="fas fa-trash-alt"></i> Delete</button>' +
-                '</div>';
+            // Active tab — show primary + all accepted/pending additional projects
+            var projItems = [];
+            if (c.projectName) {
+                projItems.push('<div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;margin-bottom:0.2rem;">' +
+                    '<i class="fas fa-folder" style="color:var(--violet);font-size:0.65rem;"></i>' +
+                    '<span style="color:#f1f5f9;font-weight:600;">' + esc(c.projectName) + '</span>' +
+                    '<span style="color:#94a3b8;font-size:0.68rem;">Primary</span>' +
+                    '</div>');
+            }
+            (c.additionalProjects || []).forEach(function(ap) {
+                if (ap.acceptanceStatus === 'declined') return;
+                var color = ap.acceptanceStatus === 'pending' ? '#f59e0b' : '#00d4c8';
+                var label = ap.acceptanceStatus === 'pending' ? 'Awaiting architect' : 'In Progress';
+                projItems.push('<div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;margin-bottom:0.2rem;">' +
+                    '<i class="fas fa-folder-open" style="color:' + color + ';font-size:0.65rem;"></i>' +
+                    '<span style="color:#f1f5f9;font-weight:600;">' + esc(ap.projectName) + '</span>' +
+                    '<span style="color:' + color + ';font-size:0.68rem;font-weight:700;">' + label + '</span>' +
+                    '</div>');
+            });
+            if (projItems.length) {
+                projectsHtml = '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.14);border-radius:8px;">' +
+                    projItems.join('') + '</div>';
+            }
         }
 
-        return `<div class="conn-card${isCompleted ? ' is-completed' : ''}">
-    <div class="conn-card-top">
-        <img class="conn-arch-avatar" src="${avatar}" alt="${esc(arch.name)}"
-             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name||'A')}&background=8b5cf6&color=fff&bold=true'">
-        <div class="conn-arch-info">
-            <div class="conn-arch-name">${esc(arch.name)}</div>
-            <div class="conn-arch-spec">${esc(arch.specialization || 'Architect')}</div>
-            ${onlineDot}
-            <span class="conn-status-chip ${statusCls[c.status] || ''}">${statusMap[c.status] || c.status}</span>
-            ${completedBadgeHtml}
-        </div>
-    </div>
-    ${projHtml}
-    ${intro}
-    <div class="conn-card-footer">${actionBtn}</div>
-</div>`;
+        var intro = c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '';
+        var completedBadgeHtml = isCompleted ? '<div class="conn-completed-badge"><i class="fas fa-check-circle"></i> Project Completed</div>' : '';
+
+        var actionBtn = '<button class="conn-chat-btn" onclick="openChatModal(\'' + c._id + '\',\'' + esc(arch.name) + '\',\'' + avatar + '\')">' +
+            '<i class="fas fa-comments"></i> Chat ' + unreadBadge + '</button>';
+
+        return '<div class="conn-card' + (isCompleted ? ' is-completed' : '') + '">' +
+            '<div class="conn-card-top">' +
+                '<img class="conn-arch-avatar" src="' + avatar + '" alt="' + esc(arch.name) + '" onerror="this.src=\'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true\'">' +
+                '<div class="conn-arch-info">' +
+                    '<div class="conn-arch-name">' + esc(arch.name) + '</div>' +
+                    '<div class="conn-arch-spec">' + esc(arch.specialization || 'Architect') + '</div>' +
+                    onlineDot +
+                    '<span class="conn-status-chip status-accepted">Accepted</span>' +
+                    completedBadgeHtml +
+                '</div>' +
+            '</div>' +
+            projectsHtml +
+            intro +
+            '<div class="conn-card-footer">' + actionBtn + '</div>' +
+        '</div>';
     }).join('') + '</div>';
+}
+
+// ── Pending tab — primary pending connections + additional project requests ────
+function _renderConnPending(conns, body) {
+    var pendingConns       = conns.filter(function(c) { return c.status === 'pending'; });
+    var additionalPending  = [];
+    conns.forEach(function(c) {
+        if (c.status !== 'accepted') return;
+        (c.additionalProjects || []).forEach(function(ap) {
+            if (ap.acceptanceStatus === 'pending') {
+                additionalPending.push({ conn: c, ap: ap });
+            }
+        });
+    });
+
+    if (!pendingConns.length && !additionalPending.length) {
+        body.innerHTML = '<div class="conn-empty">' +
+            '<div class="conn-empty-icon"><i class="fas fa-clock"></i></div>' +
+            '<div class="conn-empty-title">No pending requests</div>' +
+            '<div class="conn-empty-sub">Requests you send to architects will appear here.</div>' +
+            '</div>';
+        return;
+    }
+
+    var html = '<div class="conn-grid">';
+
+    // Primary pending connection cards
+    html += pendingConns.map(function(c) {
+        var arch   = c.architect || {};
+        var avatar = arch.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true';
+        var projHtml = c.projectName
+            ? '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;font-size:0.75rem;display:flex;align-items:center;gap:0.4rem;">' +
+              '<i class="fas fa-folder" style="color:#f59e0b;font-size:0.65rem;"></i>' +
+              '<span style="color:#f1f5f9;font-weight:600;">' + esc(c.projectName) + '</span>' +
+              '</div>' : '';
+        return '<div class="conn-card">' +
+            '<div class="conn-card-top">' +
+                '<img class="conn-arch-avatar" src="' + avatar + '" alt="' + esc(arch.name) + '" onerror="this.src=\'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true\'">' +
+                '<div class="conn-arch-info">' +
+                    '<div class="conn-arch-name">' + esc(arch.name) + '</div>' +
+                    '<div class="conn-arch-spec">' + esc(arch.specialization || 'Architect') + '</div>' +
+                    '<span class="conn-status-chip status-pending">Pending</span>' +
+                '</div>' +
+            '</div>' +
+            projHtml +
+            (c.introMessage ? '<div class="conn-intro">' + esc(c.introMessage) + '</div>' : '') +
+            '<div class="conn-card-footer">' +
+                '<div class="conn-pending-note"><i class="fas fa-clock"></i> Awaiting response</div>' +
+                '<button class="conn-cancel-btn" onclick="cancelConnectionRequest(\'' + c._id + '\',\'' + esc(arch.name) + '\')">' +
+                '<i class="fas fa-times"></i> Cancel Request</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+
+    // Additional project pending cards
+    html += additionalPending.map(function(item) {
+        var c      = item.conn;
+        var ap     = item.ap;
+        var arch   = c.architect || {};
+        var avatar = arch.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true';
+        var assigned = ap.assignedAt ? new Date(ap.assignedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '';
+        return '<div class="conn-card" style="border-color:rgba(245,158,11,0.25);">' +
+            '<div style="display:flex;align-items:center;gap:0.4rem;padding:0.4rem 0.7rem;background:rgba(245,158,11,0.08);border-bottom:1px solid rgba(245,158,11,0.15);font-size:0.68rem;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:0.05em;">' +
+                '<i class="fas fa-layer-group" style="font-size:0.62rem;"></i> Additional Project Request' +
+            '</div>' +
+            '<div class="conn-card-top" style="padding-top:0.75rem;">' +
+                '<img class="conn-arch-avatar" src="' + avatar + '" alt="' + esc(arch.name) + '" onerror="this.src=\'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true\'">' +
+                '<div class="conn-arch-info">' +
+                    '<div class="conn-arch-name">' + esc(arch.name) + '</div>' +
+                    '<div class="conn-arch-spec">' + esc(arch.specialization || 'Architect') + '</div>' +
+                    '<span class="conn-status-chip status-pending">Awaiting Architect</span>' +
+                '</div>' +
+            '</div>' +
+            '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;">' +
+                '<div style="font-size:0.75rem;display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">' +
+                    '<i class="fas fa-folder-open" style="color:#f59e0b;font-size:0.65rem;"></i>' +
+                    '<span style="color:#f1f5f9;font-weight:600;">' + esc(ap.projectName) + '</span>' +
+                '</div>' +
+                (assigned ? '<div style="font-size:0.68rem;color:#64748b;"><i class="fas fa-calendar-alt" style="font-size:0.6rem;margin-right:0.3rem;"></i>Sent ' + assigned + '</div>' : '') +
+            '</div>' +
+            '<div class="conn-card-footer">' +
+                '<div class="conn-pending-note"><i class="fas fa-clock"></i> Waiting for architect to accept</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+
+    html += '</div>';
+    body.innerHTML = html;
 }
 
 function _renderConnHistory(conns, body) {
@@ -1495,22 +1697,34 @@ function _renderConnHistory(conns, body) {
     var rows = sorted.map(function(c) {
         var arch   = c.architect || {};
         var avatar = arch.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true';
-        var projLabel = c.projectName ? '<span class="conn-history-proj"><i class="fas fa-folder" style="font-size:0.6rem;color:var(--violet)"></i> ' + esc(c.projectName) + '</span>' : '';
-        var dateLabel = c.createdAt ? '<span class="conn-history-date"><i class="fas fa-calendar-alt" style="font-size:0.6rem"></i> ' + new Date(c.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) + '</span>' : '';
+
         var isCompleted = _isCompletedWithArchitect(c);
         var finalStatus = isCompleted ? 'completed' : c.status;
         var statusLabels = { accepted:'Active', completed:'Completed', rejected:'Rejected', pending:'Pending' };
         var statusCls    = { accepted:'hs-accepted', completed:'hs-completed', rejected:'hs-rejected', pending:'hs-pending' };
-        return `<div class="conn-history-item">
-    <img class="conn-history-avatar" src="${avatar}" alt="${esc(arch.name)}"
-         onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(arch.name||'A')}&background=8b5cf6&color=fff&bold=true'">
-    <div class="conn-history-info">
-        <div class="conn-history-name">${esc(arch.name)}</div>
-        <div class="conn-history-spec">${esc(arch.specialization||'Architect')}</div>
-        <div class="conn-history-meta">${projLabel}${dateLabel}</div>
-    </div>
-    <span class="conn-history-status ${statusCls[finalStatus]||'hs-accepted'}">${statusLabels[finalStatus]||finalStatus}</span>
-</div>`;
+
+        var dateLabel = c.createdAt ? '<span class="conn-history-date"><i class="fas fa-calendar-alt" style="font-size:0.6rem"></i> ' + new Date(c.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) + '</span>' : '';
+
+        // Build projects summary for history row
+        var projSummary = '';
+        var allProjNames = [];
+        if (c.projectName) allProjNames.push(c.projectName);
+        (c.additionalProjects || []).forEach(function(ap) {
+            if (ap.projectName) allProjNames.push(ap.projectName + (ap.acceptanceStatus === 'pending' ? ' (pending)' : ap.acceptanceStatus === 'declined' ? ' (declined)' : ''));
+        });
+        if (allProjNames.length) {
+            projSummary = '<span class="conn-history-proj"><i class="fas fa-folder" style="font-size:0.6rem;color:var(--violet)"></i> ' + esc(allProjNames.join(', ')) + '</span>';
+        }
+
+        return '<div class="conn-history-item">' +
+            '<img class="conn-history-avatar" src="' + avatar + '" alt="' + esc(arch.name) + '" onerror="this.src=\'https://ui-avatars.com/api/?name=' + encodeURIComponent(arch.name||'A') + '&background=8b5cf6&color=fff&bold=true\'">' +
+            '<div class="conn-history-info">' +
+                '<div class="conn-history-name">' + esc(arch.name) + '</div>' +
+                '<div class="conn-history-spec">' + esc(arch.specialization||'Architect') + '</div>' +
+                '<div class="conn-history-meta">' + projSummary + dateLabel + '</div>' +
+            '</div>' +
+            '<span class="conn-history-status ' + (statusCls[finalStatus]||'hs-accepted') + '">' + (statusLabels[finalStatus]||finalStatus) + '</span>' +
+        '</div>';
     }).join('');
     body.innerHTML = '<div class="conn-history-list">' + rows + '</div>';
 }
