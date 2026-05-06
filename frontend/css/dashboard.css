@@ -1811,3 +1811,29 @@ body::before {
     background: rgba(0,212,200,0.08) !important;
     border-color: rgba(0,212,200,0.5) !important;
 }
+/* ═══ Measurement Tools Section ═══ */
+.meas-db-wrap { padding: 1.5rem; max-width: 900px; margin: 0 auto; }
+.meas-db-hero { background: linear-gradient(135deg, rgba(0,212,200,0.1), rgba(91,124,250,0.08)); border: 1px solid rgba(0,212,200,0.18); border-radius: 14px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 14px; }
+.meas-db-hero-icon { width: 44px; height: 44px; background: rgba(0,212,200,0.15); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #00d4c8; font-size: 1.2rem; flex-shrink: 0; }
+.meas-db-hero-title { font-size: 1rem; font-weight: 700; color: #f1f5f9; }
+.meas-db-hero-sub { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+.meas-db-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.2rem; }
+.meas-db-tab { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #64748b; font-size: 0.72rem; font-weight: 600; padding: 6px 14px; border-radius: 8px; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; }
+.meas-db-tab:hover { color: #00d4c8; border-color: rgba(0,212,200,0.3); }
+.meas-db-tab.active { background: rgba(0,212,200,0.12); border-color: rgba(0,212,200,0.4); color: #00d4c8; }
+.meas-db-category { display: none; }
+.meas-db-category.active { display: block; }
+.meas-db-cat-title { font-size: 0.72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #00d4c8; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 6px; }
+.meas-conv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 1.2rem; }
+.meas-conv-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 0.85rem 1rem; transition: border-color .18s; }
+.meas-conv-card:hover { border-color: rgba(0,212,200,0.25); }
+.meas-conv-label { font-size: 0.65rem; color: #64748b; font-weight: 600; margin-bottom: 6px; letter-spacing: .04em; }
+.meas-conv-row { display: flex; align-items: center; gap: 6px; }
+.meas-conv-input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(0,212,200,0.15); border-radius: 6px; color: #f1f5f9; font-size: 0.8rem; padding: 5px 8px; width: 100%; min-width: 0; transition: border-color .15s; }
+.meas-conv-input:focus { outline: none; border-color: #00d4c8; }
+.meas-conv-unit { font-size: 0.67rem; color: #475569; font-weight: 600; white-space: nowrap; min-width: 32px; }
+.meas-conv-arrow { text-align: center; color: #334155; font-size: 0.75rem; margin: 4px 0; }
+.meas-ref-table { width: 100%; border-collapse: collapse; font-size: 0.73rem; }
+.meas-ref-table th { color: #00d4c8; font-weight: 700; padding: 6px 10px; text-align: left; border-bottom: 1px solid rgba(0,212,200,0.2); }
+.meas-ref-table td { color: #94a3b8; padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.meas-ref-table tr:hover td { background: rgba(0,212,200,0.05); }

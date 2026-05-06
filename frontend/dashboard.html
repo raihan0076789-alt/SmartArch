@@ -971,6 +971,9 @@
             <button class="nav-item" data-section="subscription">
                 <i class="fas fa-crown"></i><span>Subscription</span>
             </button>
+            <button class="nav-item" data-section="measurement">
+                <i class="fas fa-ruler-combined"></i><span>Measure Tools</span>
+            </button>
             <button class="nav-item" data-section="settings">
                 <i class="fas fa-cog"></i><span>Settings</span>
             </button>
@@ -1904,7 +1907,120 @@
                 </div>
             </div>
             <!-- ── /Subscription Section ──────────────────────────────────── -->
+<!-- ══════════ MEASUREMENT TOOLS SECTION ══════════ -->
+<div class="content-section" id="measurementSection">
+    <div class="meas-db-wrap">
+        <div class="meas-db-hero">
+            <div class="meas-db-hero-icon"><i class="fas fa-ruler-combined"></i></div>
+            <div>
+                <div class="meas-db-hero-title">Measurement Tools</div>
+                <div class="meas-db-hero-sub">Unit conversions for architecture & construction — length, area, volume, weight, and land.</div>
+            </div>
+        </div>
 
+        <div class="meas-db-tabs">
+            <button class="meas-db-tab active" onclick="switchMeasDbTab('length')" id="mdbtab-length"><i class="fas fa-arrows-alt-h"></i> Length</button>
+            <button class="meas-db-tab" onclick="switchMeasDbTab('area')" id="mdbtab-area"><i class="fas fa-vector-square"></i> Area</button>
+            <button class="meas-db-tab" onclick="switchMeasDbTab('volume')" id="mdbtab-volume"><i class="fas fa-cube"></i> Volume</button>
+            <button class="meas-db-tab" onclick="switchMeasDbTab('weight')" id="mdbtab-weight"><i class="fas fa-weight"></i> Weight / Load</button>
+            <button class="meas-db-tab" onclick="switchMeasDbTab('land')" id="mdbtab-land"><i class="fas fa-map"></i> Land (India)</button>
+            <button class="meas-db-tab" onclick="switchMeasDbTab('ref')" id="mdbtab-ref"><i class="fas fa-table"></i> Quick Ref</button>
+        </div>
+
+        <!-- LENGTH -->
+        <div class="meas-db-category active" id="mdbcat-length">
+            <div class="meas-db-cat-title"><i class="fas fa-arrows-alt-h"></i> Length Conversions</div>
+            <div class="meas-conv-grid">
+                <div class="meas-conv-card"><div class="meas-conv-label">Meters → Feet</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2ft_m" type="number" placeholder="m" oninput="dbConv('db_m2ft_m','db_m2ft_ft',v=>v*3.28084)"><span class="meas-conv-unit">m</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2ft_ft" type="number" placeholder="ft" oninput="dbConv('db_m2ft_ft','db_m2ft_m',v=>v/3.28084)"><span class="meas-conv-unit">ft</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Meters → Inches</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2in_m" type="number" placeholder="m" oninput="dbConv('db_m2in_m','db_m2in_in',v=>v*39.3701)"><span class="meas-conv-unit">m</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2in_in" type="number" placeholder="in" oninput="dbConv('db_m2in_in','db_m2in_m',v=>v/39.3701)"><span class="meas-conv-unit">in</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Cm → Inches</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_cm2in_cm" type="number" placeholder="cm" oninput="dbConv('db_cm2in_cm','db_cm2in_in',v=>v/2.54)"><span class="meas-conv-unit">cm</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_cm2in_in" type="number" placeholder="in" oninput="dbConv('db_cm2in_in','db_cm2in_cm',v=>v*2.54)"><span class="meas-conv-unit">in</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Feet → Cm</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft2cm_ft" type="number" placeholder="ft" oninput="dbConv('db_ft2cm_ft','db_ft2cm_cm',v=>v*30.48)"><span class="meas-conv-unit">ft</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft2cm_cm" type="number" placeholder="cm" oninput="dbConv('db_ft2cm_cm','db_ft2cm_ft',v=>v/30.48)"><span class="meas-conv-unit">cm</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Meters → Yards</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2yd_m" type="number" placeholder="m" oninput="dbConv('db_m2yd_m','db_m2yd_yd',v=>v*1.09361)"><span class="meas-conv-unit">m</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2yd_yd" type="number" placeholder="yd" oninput="dbConv('db_m2yd_yd','db_m2yd_m',v=>v/1.09361)"><span class="meas-conv-unit">yd</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Mm → Inches</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_mm2in_mm" type="number" placeholder="mm" oninput="dbConv('db_mm2in_mm','db_mm2in_in',v=>v/25.4)"><span class="meas-conv-unit">mm</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_mm2in_in" type="number" placeholder="in" oninput="dbConv('db_mm2in_in','db_mm2in_mm',v=>v*25.4)"><span class="meas-conv-unit">in</span></div></div>
+            </div>
+        </div>
+
+        <!-- AREA -->
+        <div class="meas-db-category" id="mdbcat-area">
+            <div class="meas-db-cat-title"><i class="fas fa-vector-square"></i> Area Conversions</div>
+            <div class="meas-conv-grid">
+                <div class="meas-conv-card"><div class="meas-conv-label">m² → sq ft</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqft_m2" type="number" placeholder="m²" oninput="dbConv('db_m2sqft_m2','db_m2sqft_ft2',v=>v*10.7639)"><span class="meas-conv-unit">m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqft_ft2" type="number" placeholder="ft²" oninput="dbConv('db_m2sqft_ft2','db_m2sqft_m2',v=>v/10.7639)"><span class="meas-conv-unit">ft²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m² → sq yards</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqyd_m2" type="number" placeholder="m²" oninput="dbConv('db_m2sqyd_m2','db_m2sqyd_yd2',v=>v*1.19599)"><span class="meas-conv-unit">m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqyd_yd2" type="number" placeholder="yd²" oninput="dbConv('db_m2sqyd_yd2','db_m2sqyd_m2',v=>v/1.19599)"><span class="meas-conv-unit">yd²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m² → Cents (India)</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2cent_m2" type="number" placeholder="m²" oninput="dbConv('db_m2cent_m2','db_m2cent_ct',v=>v*0.024711)"><span class="meas-conv-unit">m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2cent_ct" type="number" placeholder="Cents" oninput="dbConv('db_m2cent_ct','db_m2cent_m2',v=>v/0.024711)"><span class="meas-conv-unit">¢</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">ft² → cm²</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft2cm2_ft2" type="number" placeholder="ft²" oninput="dbConv('db_ft2cm2_ft2','db_ft2cm2_cm2',v=>v*929.03)"><span class="meas-conv-unit">ft²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft2cm2_cm2" type="number" placeholder="cm²" oninput="dbConv('db_ft2cm2_cm2','db_ft2cm2_ft2',v=>v/929.03)"><span class="meas-conv-unit">cm²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m² → Guntha</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2gu_m2" type="number" placeholder="m²" oninput="dbConv('db_m2gu_m2','db_m2gu_g',v=>v*0.009884)"><span class="meas-conv-unit">m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2gu_g" type="number" placeholder="Guntha" oninput="dbConv('db_m2gu_g','db_m2gu_m2',v=>v/0.009884)"><span class="meas-conv-unit">Gu</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m² → sq inches</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqin_m2" type="number" placeholder="m²" oninput="dbConv('db_m2sqin_m2','db_m2sqin_in2',v=>v*1550.003)"><span class="meas-conv-unit">m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m2sqin_in2" type="number" placeholder="in²" oninput="dbConv('db_m2sqin_in2','db_m2sqin_m2',v=>v/1550.003)"><span class="meas-conv-unit">in²</span></div></div>
+            </div>
+        </div>
+
+        <!-- VOLUME -->
+        <div class="meas-db-category" id="mdbcat-volume">
+            <div class="meas-db-cat-title"><i class="fas fa-cube"></i> Volume Conversions</div>
+            <div class="meas-conv-grid">
+                <div class="meas-conv-card"><div class="meas-conv-label">m³ → cubic feet</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3ft3_m3" type="number" placeholder="m³" oninput="dbConv('db_m3ft3_m3','db_m3ft3_ft3',v=>v*35.3147)"><span class="meas-conv-unit">m³</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3ft3_ft3" type="number" placeholder="ft³" oninput="dbConv('db_m3ft3_ft3','db_m3ft3_m3',v=>v/35.3147)"><span class="meas-conv-unit">ft³</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m³ → Litres</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3lt_m3" type="number" placeholder="m³" oninput="dbConv('db_m3lt_m3','db_m3lt_lt',v=>v*1000)"><span class="meas-conv-unit">m³</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3lt_lt" type="number" placeholder="L" oninput="dbConv('db_m3lt_lt','db_m3lt_m3',v=>v/1000)"><span class="meas-conv-unit">L</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">ft³ → Litres</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft3lt_ft3" type="number" placeholder="ft³" oninput="dbConv('db_ft3lt_ft3','db_ft3lt_lt',v=>v*28.3168)"><span class="meas-conv-unit">ft³</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ft3lt_lt" type="number" placeholder="L" oninput="dbConv('db_ft3lt_lt','db_ft3lt_ft3',v=>v/28.3168)"><span class="meas-conv-unit">L</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">m³ → Gallons (US)</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3gal_m3" type="number" placeholder="m³" oninput="dbConv('db_m3gal_m3','db_m3gal_gal',v=>v*264.172)"><span class="meas-conv-unit">m³</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_m3gal_gal" type="number" placeholder="gal" oninput="dbConv('db_m3gal_gal','db_m3gal_m3',v=>v/264.172)"><span class="meas-conv-unit">gal</span></div></div>
+            </div>
+        </div>
+
+        <!-- WEIGHT -->
+        <div class="meas-db-category" id="mdbcat-weight">
+            <div class="meas-db-cat-title"><i class="fas fa-weight"></i> Weight / Load Conversions</div>
+            <div class="meas-conv-grid">
+                <div class="meas-conv-card"><div class="meas-conv-label">Kg → Pounds</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kg2lb_kg" type="number" placeholder="kg" oninput="dbConv('db_kg2lb_kg','db_kg2lb_lb',v=>v*2.20462)"><span class="meas-conv-unit">kg</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kg2lb_lb" type="number" placeholder="lb" oninput="dbConv('db_kg2lb_lb','db_kg2lb_kg',v=>v/2.20462)"><span class="meas-conv-unit">lb</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Tonnes → Kg</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_t2kg_t" type="number" placeholder="T" oninput="dbConv('db_t2kg_t','db_t2kg_kg',v=>v*1000)"><span class="meas-conv-unit">T</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_t2kg_kg" type="number" placeholder="kg" oninput="dbConv('db_t2kg_kg','db_t2kg_t',v=>v/1000)"><span class="meas-conv-unit">kg</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">kg/m² → psf</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kgm2_k" type="number" placeholder="kg/m²" oninput="dbConv('db_kgm2_k','db_kgm2_p',v=>v*0.20482)"><span class="meas-conv-unit">kg/m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kgm2_p" type="number" placeholder="psf" oninput="dbConv('db_kgm2_p','db_kgm2_k',v=>v/0.20482)"><span class="meas-conv-unit">psf</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">kN/m² → kg/m²</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kn2kg_kn" type="number" placeholder="kN/m²" oninput="dbConv('db_kn2kg_kn','db_kn2kg_kg',v=>v*101.972)"><span class="meas-conv-unit">kN/m²</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_kn2kg_kg" type="number" placeholder="kg/m²" oninput="dbConv('db_kn2kg_kg','db_kn2kg_kn',v=>v/101.972)"><span class="meas-conv-unit">kg/m²</span></div></div>
+            </div>
+        </div>
+
+        <!-- LAND -->
+        <div class="meas-db-category" id="mdbcat-land">
+            <div class="meas-db-cat-title"><i class="fas fa-map"></i> Land Area (India + Standard)</div>
+            <div class="meas-conv-grid">
+                <div class="meas-conv-card"><div class="meas-conv-label">Acres → m²</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ac2m2_ac" type="number" placeholder="acres" oninput="dbConv('db_ac2m2_ac','db_ac2m2_m2',v=>v*4046.86)"><span class="meas-conv-unit">ac</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ac2m2_m2" type="number" placeholder="m²" oninput="dbConv('db_ac2m2_m2','db_ac2m2_ac',v=>v/4046.86)"><span class="meas-conv-unit">m²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Acres → sq ft</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ac2ft2_ac" type="number" placeholder="acres" oninput="dbConv('db_ac2ft2_ac','db_ac2ft2_ft2',v=>v*43560)"><span class="meas-conv-unit">ac</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ac2ft2_ft2" type="number" placeholder="ft²" oninput="dbConv('db_ac2ft2_ft2','db_ac2ft2_ac',v=>v/43560)"><span class="meas-conv-unit">ft²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Hectares → Acres</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ha2ac_ha" type="number" placeholder="ha" oninput="dbConv('db_ha2ac_ha','db_ha2ac_ac',v=>v*2.47105)"><span class="meas-conv-unit">ha</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ha2ac_ac" type="number" placeholder="ac" oninput="dbConv('db_ha2ac_ac','db_ha2ac_ha',v=>v/2.47105)"><span class="meas-conv-unit">ac</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Cents → m²</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ct2m2_ct" type="number" placeholder="Cents" oninput="dbConv('db_ct2m2_ct','db_ct2m2_m2',v=>v*40.4686)"><span class="meas-conv-unit">¢</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_ct2m2_m2" type="number" placeholder="m²" oninput="dbConv('db_ct2m2_m2','db_ct2m2_ct',v=>v/40.4686)"><span class="meas-conv-unit">m²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Guntha → sq ft</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_gu2ft2_g" type="number" placeholder="Guntha" oninput="dbConv('db_gu2ft2_g','db_gu2ft2_ft2',v=>v*1089)"><span class="meas-conv-unit">Gu</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_gu2ft2_ft2" type="number" placeholder="ft²" oninput="dbConv('db_gu2ft2_ft2','db_gu2ft2_g',v=>v/1089)"><span class="meas-conv-unit">ft²</span></div></div>
+                <div class="meas-conv-card"><div class="meas-conv-label">Bigha → m² (Avg)</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_bh2m2_b" type="number" placeholder="Bigha" oninput="dbConv('db_bh2m2_b','db_bh2m2_m2',v=>v*1618.74)"><span class="meas-conv-unit">Bi</span></div><div class="meas-conv-arrow">↕</div><div class="meas-conv-row"><input class="meas-conv-input" id="db_bh2m2_m2" type="number" placeholder="m²" oninput="dbConv('db_bh2m2_m2','db_bh2m2_b',v=>v/1618.74)"><span class="meas-conv-unit">m²</span></div></div>
+            </div>
+        </div>
+
+        <!-- QUICK REF -->
+        <div class="meas-db-category" id="mdbcat-ref">
+            <div class="meas-db-cat-title"><i class="fas fa-table"></i> Quick Reference</div>
+            <table class="meas-ref-table">
+                <tr><th>From</th><th>To</th><th>Multiply by</th></tr>
+                <tr><td>1 meter</td><td>feet</td><td>3.28084</td></tr>
+                <tr><td>1 meter</td><td>inches</td><td>39.3701</td></tr>
+                <tr><td>1 foot</td><td>cm</td><td>30.48</td></tr>
+                <tr><td>1 inch</td><td>mm</td><td>25.4</td></tr>
+                <tr><td>1 m²</td><td>sq ft</td><td>10.7639</td></tr>
+                <tr><td>1 m²</td><td>sq yards</td><td>1.19599</td></tr>
+                <tr><td>1 m³</td><td>cu ft</td><td>35.3147</td></tr>
+                <tr><td>1 m³</td><td>litres</td><td>1,000</td></tr>
+                <tr><td>1 acre</td><td>m²</td><td>4,046.86</td></tr>
+                <tr><td>1 acre</td><td>sq ft</td><td>43,560</td></tr>
+                <tr><td>1 hectare</td><td>acres</td><td>2.47105</td></tr>
+                <tr><td>1 Cent (India)</td><td>m²</td><td>40.4686</td></tr>
+                <tr><td>1 Guntha</td><td>sq ft</td><td>1,089</td></tr>
+                <tr><td>1 Bigha (avg)</td><td>m²</td><td>1,618.74</td></tr>
+                <tr><td>1 tonne</td><td>kg</td><td>1,000</td></tr>
+                <tr><td>1 kg</td><td>pounds</td><td>2.20462</td></tr>
+                <tr><td>1 kN/m²</td><td>kg/m²</td><td>101.972</td></tr>
+                <tr><td>Standard room height</td><td>—</td><td>2.7–3.0 m / 9–10 ft</td></tr>
+                <tr><td>Door (standard)</td><td>—</td><td>2.1 m × 0.9 m</td></tr>
+                <tr><td>Window (standard)</td><td>—</td><td>1.2 m × 1.5 m</td></tr>
+                <tr><td>Stair riser</td><td>—</td><td>150–190 mm</td></tr>
+                <tr><td>Stair tread</td><td>—</td><td>250–300 mm</td></tr>
+            </table>
+        </div>
+
+    </div>
+</div>
+<!-- ══════════ END MEASUREMENT TOOLS ══════════ -->
             <div class="content-section" id="settingsSection">
                 <div class="section-header-row">
                     <div>

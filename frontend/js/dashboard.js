@@ -195,6 +195,7 @@ function setupNavigation() {
                 settings:     'Settings',
                 messages:     'My Messages',
                 Guide:        'How to Use',
+                measurement: 'Measurement Tools',
                 subscription: 'Subscription',
                 connections:  'Client Requests'
             };
@@ -3788,3 +3789,19 @@ window.switchShareTab       = switchShareTab;
 window.submitShareWithClient = submitShareWithClient;
 window.generateShareLink    = generateShareLink;
 window.copyShareLink        = copyShareLink;
+// ═══ Measurement Tools Tab Switcher ═══
+window.switchMeasDbTab = function(cat) {
+    document.querySelectorAll('.meas-db-tab').forEach(function(t){ t.classList.remove('active'); });
+    document.querySelectorAll('.meas-db-category').forEach(function(c){ c.classList.remove('active'); });
+    var tab = document.getElementById('mdbtab-' + cat);
+    var body = document.getElementById('mdbcat-' + cat);
+    if (tab) tab.classList.add('active');
+    if (body) body.classList.add('active');
+};
+window.dbConv = function(fromId, toId, fn) {
+    var fromEl = document.getElementById(fromId);
+    var toEl   = document.getElementById(toId);
+    if (!fromEl || !toEl) return;
+    var val = parseFloat(fromEl.value);
+    toEl.value = isNaN(val) ? '' : parseFloat(fn(val).toFixed(6));
+};
