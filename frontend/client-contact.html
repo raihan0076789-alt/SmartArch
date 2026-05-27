@@ -719,7 +719,7 @@
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = 'Bearer ' + token;
 
-            const res = await fetch('http://localhost:5000/api/tickets', {
+            const res = await fetch('https://smartarch-backend.onrender.com/api/tickets', {
                 method: 'POST', headers,
                 body: JSON.stringify({ name, email, subject, category: subject, company, message })
             });

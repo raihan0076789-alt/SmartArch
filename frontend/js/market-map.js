@@ -1143,7 +1143,7 @@ async function mmLoadClientProjects() {
   try {
     var token = localStorage.getItem('client_token');
     if (!token) return;
-    var API = (window.CLIENT_API || 'http://localhost:5000/api');
+    var API = (window.CLIENT_API || 'https://smartarch-backend.onrender.com/api');
     var r = await fetch(API + '/client/projects', {
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
     });

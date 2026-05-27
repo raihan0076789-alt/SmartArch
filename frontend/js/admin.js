@@ -1,7 +1,7 @@
 // frontend/js/admin.js
 'use strict';
 
-const ADMIN_API = 'http://localhost:5000/api/admin';
+const ADMIN_API = 'https://smartarch-backend.onrender.com/api/admin';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
@@ -894,7 +894,7 @@ window.projectsPage = projectsPage;
 
 // ─── SUPPORT MESSAGING SYSTEM ──────────────────────────────────────────────────
 
-const TICKET_API = 'http://localhost:5000/api/tickets';
+const TICKET_API = 'https://smartarch-backend.onrender.com/api/tickets';
 let currentTicketId = null;
 
 function adminAuthHeaders() {
@@ -1327,7 +1327,7 @@ window.loadAIScoreAnalytics  = loadAIScoreAnalytics;
 
 // ─── Reviews ──────────────────────────────────────────────────────────────────
 async function reviewsRequest(endpoint, options = {}) {
-    const url = `http://localhost:5000/api/reviews${endpoint}`;
+    const url = `https://smartarch-backend.onrender.com/api/reviews${endpoint}`;
     const config = {
         ...options,
         headers: {
@@ -1488,7 +1488,7 @@ window.loadAdminReviews  = loadAdminReviews;
 
 // ─── App Ratings ──────────────────────────────────────────────────────────────
 async function appRatingsRequest(endpoint, options = {}) {
-    const url = `http://localhost:5000/api/app-ratings${endpoint}`;
+    const url = `https://smartarch-backend.onrender.com/api/app-ratings${endpoint}`;
     const config = {
         ...options,
         headers: {

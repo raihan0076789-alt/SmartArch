@@ -1,5 +1,5 @@
 'use strict';
-const CLIENT_API = 'http://localhost:5000/api';
+const CLIENT_API = 'https://smartarch-backend.onrender.com/api';
 
 /* ============================================================
    VIEW SWITCHER
@@ -223,7 +223,7 @@ function authHeaders() {
 
         try {
             var token = localStorage.getItem('client_token');
-            await fetch('http://localhost:5000/api/app-ratings', {
+            await fetch('https://smartarch-backend.onrender.com/api/app-ratings', {
                 method:  'POST',
                 headers: Object.assign(
                     { 'Content-Type': 'application/json' },
@@ -1806,7 +1806,7 @@ function renderChatMessages(messages, connection) {
         return;
     }
 
-    var BASE = 'http://localhost:5000';
+    var BASE = 'https://smartarch-backend.onrender.com';
     var html = '';
     // Show intro message first if any
     if (connection && connection.introMessage) {
@@ -2623,7 +2623,7 @@ function renderProjectDetail(p) {
             '<div style="display:flex;flex-wrap:wrap;gap:0.5rem">' +
             p.attachments.map(function(a) {
                 var isImg = a.mimetype && a.mimetype.startsWith('image/');
-                var href  = 'http://localhost:5000' + a.url;
+                var href  = 'https://smartarch-backend.onrender.com' + a.url;
                 if (isImg) {
                     return '<a href="' + href + '" target="_blank" style="display:block;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">' +
                         '<img src="' + href + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">' + '</a>';
@@ -3209,7 +3209,7 @@ async function _pollConnections() {
     var token = localStorage.getItem('client_token');
     if (!token) return;
     try {
-        var r = await fetch((window.CLIENT_API || 'http://localhost:5000/api') + '/connections/my', {
+        var r = await fetch((window.CLIENT_API || 'https://smartarch-backend.onrender.com/api') + '/connections/my', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!r.ok) return;
@@ -3270,7 +3270,7 @@ async function _pollSupportReplies() {
     var token = localStorage.getItem('client_token');
     if (!token) return;
     try {
-        var r = await fetch((window.CLIENT_API || 'http://localhost:5000/api') + '/client/support', {
+        var r = await fetch((window.CLIENT_API || 'https://smartarch-backend.onrender.com/api') + '/client/support', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!r.ok) return;
@@ -3312,7 +3312,7 @@ async function _pollSharedProjects() {
     var token = localStorage.getItem('client_token');
     if (!token) return;
     try {
-        var r = await fetch((window.CLIENT_API || 'http://localhost:5000/api') + '/shares/my', {
+        var r = await fetch((window.CLIENT_API || 'https://smartarch-backend.onrender.com/api') + '/shares/my', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!r.ok) return;
@@ -3666,7 +3666,7 @@ async function clientApproveProject(projectId, shareId) {
     if (!confirm('Approve this project as complete? This will notify your architect.')) return;
     try {
         var token = localStorage.getItem('token');
-        var r = await fetch((window.CLIENT_API || 'http://localhost:5000/api') + '/projects/' + projectId + '/status', {
+        var r = await fetch((window.CLIENT_API || 'https://smartarch-backend.onrender.com/api') + '/projects/' + projectId + '/status', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({ status: 'approved' })
@@ -4291,7 +4291,7 @@ function _docsBuildAllFiles(projects) {
             all.push({
                 id:          proj._id + '_' + att.originalName,
                 name:        att.originalName,
-                url:         'http://localhost:5000' + att.url,
+                url:         'https://smartarch-backend.onrender.com' + att.url,
                 mime:        att.mimetype || '',
                 size:        att.size || 0,
                 projectId:   proj._id,

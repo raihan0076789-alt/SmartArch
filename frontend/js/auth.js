@@ -266,7 +266,7 @@ localStorage.removeItem('smartarch_app_rated');
 
         try {
             const token = localStorage.getItem('token');
-            await fetch('http://localhost:5000/api/app-ratings', {
+            await fetch('https://smartarch-backend.onrender.com/api/app-ratings', {
                 method:  'POST',
                 headers: {
                     'Content-Type': 'application/json',

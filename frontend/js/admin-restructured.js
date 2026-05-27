@@ -16,7 +16,7 @@ const RS = {
     currentClientTicketId : null,
 };
 
-const CLIENT_TICKET_API = 'http://localhost:5000/api/client/support';
+const CLIENT_TICKET_API = 'https://smartarch-backend.onrender.com/api/client/support';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    NAVIGATION PATCH  — extend existing navigateTo
@@ -68,9 +68,9 @@ const CLIENT_TICKET_API = 'http://localhost:5000/api/client/support';
 
             // Fetch architect + client counts in parallel
             const [archRes, clientRes, reqRes] = await Promise.all([
-                fetch('http://localhost:5000/api/admin/users?role=architect&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
-                fetch('http://localhost:5000/api/admin/users?role=client&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
-                fetch('http://localhost:5000/api/admin/client-projects?limit=1', {headers}).then(r=>r.json()).catch(()=>null),
+                fetch('https://smartarch-backend.onrender.com/api/admin/users?role=architect&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
+                fetch('https://smartarch-backend.onrender.com/api/admin/users?role=client&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
+                fetch('https://smartarch-backend.onrender.com/api/admin/client-projects?limit=1', {headers}).then(r=>r.json()).catch(()=>null),
             ]);
 
             const setEl = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
@@ -834,8 +834,8 @@ async function loadClientAnalytics() {
         const headers = { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` };
 
         const [clientRes, reqRes] = await Promise.all([
-            fetch('http://localhost:5000/api/admin/users?role=client&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
-            fetch('http://localhost:5000/api/admin/client-projects/analytics', {headers}).then(r=>r.json()).catch(()=>null),
+            fetch('https://smartarch-backend.onrender.com/api/admin/users?role=client&limit=1', {headers}).then(r=>r.json()).catch(()=>null),
+            fetch('https://smartarch-backend.onrender.com/api/admin/client-projects/analytics', {headers}).then(r=>r.json()).catch(()=>null),
         ]);
 
         if (clientRes && clientRes.pagination) {

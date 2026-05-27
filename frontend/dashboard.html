@@ -2703,7 +2703,7 @@
 
         for (const project of window.projects) {
             try {
-                const res = await fetch('http://localhost:5000/api/reviews/' + project._id, {
+                const res = await fetch('https://smartarch-backend.onrender.com/api/reviews/' + project._id, {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (!res.ok) continue;
@@ -3071,7 +3071,7 @@ async function _poll() {
     var token = localStorage.getItem('token');
     if (!token) return;
     try {
-        var r = await fetch('http://localhost:5000/api/connections/my', {
+        var r = await fetch('https://smartarch-backend.onrender.com/api/connections/my', {
             headers: { 'Authorization': 'Bearer '+token }
         });
         if (!r.ok) return;
@@ -3081,7 +3081,7 @@ async function _poll() {
     } catch(e){}
     /* ── Poll support ticket replies ── */
     try {
-        var tr = await fetch('http://localhost:5000/api/tickets/my/unread', {
+        var tr = await fetch('https://smartarch-backend.onrender.com/api/tickets/my/unread', {
             headers: { 'Authorization': 'Bearer '+token }
         });
         if (tr.ok) {

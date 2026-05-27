@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Heartbeat presence ────────────────────────────────────────────────────
     if (typeof startHeartbeat === 'function') {
         startHeartbeat({
-            apiBase:  'http://localhost:5000/api',
+            apiBase:  'https://smartarch-backend.onrender.com/api',
             getToken: () => localStorage.getItem('token')
         });
     }
@@ -263,7 +263,7 @@ async function fetchAllAIScores() {
     for (const project of projects) {
         if (project._aiFeedbackLoaded) continue;
         try {
-            const res = await fetch('http://localhost:5000/api/projects/' + project._id + '/ai-feedback', {
+            const res = await fetch('https://smartarch-backend.onrender.com/api/projects/' + project._id + '/ai-feedback', {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (!res.ok) continue;
@@ -310,7 +310,7 @@ async function fetchAllRatings() {
     for (const project of projects) {
         if (project._ratingsLoaded) continue;
         try {
-            const res = await fetch('http://localhost:5000/api/reviews/' + project._id, {
+            const res = await fetch('https://smartarch-backend.onrender.com/api/reviews/' + project._id, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (!res.ok) continue;
@@ -1611,7 +1611,7 @@ async function _loadAllReviews(projs) {
         // Fetch reviews for all projects in parallel
         await Promise.all(projs.map(async p => {
             try {
-                const res  = await fetch('http://localhost:5000/api/reviews/' + p._id, { headers });
+                const res  = await fetch('https://smartarch-backend.onrender.com/api/reviews/' + p._id, { headers });
                 const data = await res.json();
                 if (data.success && data.data?.reviews?.length) {
                     data.data.reviews.forEach(r => {
@@ -1809,7 +1809,7 @@ function initPasswordValidation() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 
-const TICKET_API = 'http://localhost:5000/api/tickets';
+const TICKET_API = 'https://smartarch-backend.onrender.com/api/tickets';
 let chatState = {
     tickets: [],
     activeId: null,
@@ -2202,7 +2202,7 @@ window.toggleTicketThread  = function(){};
 // ARCHITECT — CLIENT CONNECTIONS FEATURE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CONN_API = 'http://localhost:5000/api/connections';
+const CONN_API = 'https://smartarch-backend.onrender.com/api/connections';
 
 function connHeaders() {
     const token = localStorage.getItem('token');
@@ -2988,7 +2988,7 @@ function _additionalPanelFooter(c, client, avatar, ap) {
 }
 
 function _briefBody(c, client, avatar, brief) {
-    const MAIN_API = 'http://localhost:5000';
+    const MAIN_API = 'https://smartarch-backend.onrender.com';
 
 
     // ── Reusable table row ────────────────────────────────────────────────────
@@ -3335,7 +3335,7 @@ async function respondToConnection(connId, action) {
 
 async function respondToAdditionalProject(connectionId, projectId, action) {
     try {
-        const r = await fetch(`http://localhost:5000/api/connections/${connectionId}/additional-projects/${projectId}/respond`, {
+        const r = await fetch(`https://smartarch-backend.onrender.com/api/connections/${connectionId}/additional-projects/${projectId}/respond`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
             body: JSON.stringify({ action })
@@ -3459,7 +3459,7 @@ function renderArchChatMessages(messages, connection) {
         return;
     }
 
-    const BASE = 'http://localhost:5000';
+    const BASE = 'https://smartarch-backend.onrender.com';
     messages.forEach(m => {
         const isSelf = m.senderRole === 'architect';
         const time   = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -3685,7 +3685,7 @@ async function openShareModal(projectId, projectName) {
     // Load connected clients
     try {
         const token = localStorage.getItem('token');
-        const res   = await fetch('http://localhost:5000/api/shares/connected-clients', {
+        const res   = await fetch('https://smartarch-backend.onrender.com/api/shares/connected-clients', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data  = await res.json();
@@ -3726,7 +3726,7 @@ async function submitShareWithClient() {
 
     try {
         const token = localStorage.getItem('token');
-        const res   = await fetch(`http://localhost:5000/api/projects/${_shareProjectId}/share`, {
+        const res   = await fetch(`https://smartarch-backend.onrender.com/api/projects/${_shareProjectId}/share`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body:    JSON.stringify({ mode: 'connection', clientId, message })
@@ -3749,7 +3749,7 @@ async function generateShareLink() {
 
     try {
         const token = localStorage.getItem('token');
-        const res   = await fetch(`http://localhost:5000/api/projects/${_shareProjectId}/share`, {
+        const res   = await fetch(`https://smartarch-backend.onrender.com/api/projects/${_shareProjectId}/share`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body:    JSON.stringify({ mode: 'link', message })

@@ -2,7 +2,7 @@
 // Main backend  (auth + projects) : port 5000
 // AI backend   (layout + chat)   : port 3001
 
-const API_BASE_URL    = 'http://localhost:5000/api';
+const API_BASE_URL    = 'https://smartarch-backend.onrender.com/api';
 const AI_API_BASE_URL = 'http://localhost:3001/api/architecture';
 
 // ─────────────────────────────────────────────

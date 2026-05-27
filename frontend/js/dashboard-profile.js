@@ -128,7 +128,7 @@ async function pushAvatarToBackend(avatarDataUrl) {
     try {
         const token = localStorage.getItem('token');
         if (!token) return;
-        await fetch('http://localhost:5000/api/architect/profile', {
+        await fetch('https://smartarch-backend.onrender.com/api/architect/profile', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -269,7 +269,7 @@ async function updatePassword(event) {
     try {
         showLoading('Updating password...');
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/auth/password', {
+        const res = await fetch('https://smartarch-backend.onrender.com/api/auth/password', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -339,7 +339,7 @@ async function saveAllProfileChanges(event) {
 
         showLoading('Saving profile…');
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/architect/profile', {
+        const res = await fetch('https://smartarch-backend.onrender.com/api/architect/profile', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(payload)
@@ -421,7 +421,7 @@ async function updateProfessionalInfo(event) {
     try {
         showLoading('Saving professional info…');
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/architect/profile', {
+        const res = await fetch('https://smartarch-backend.onrender.com/api/architect/profile', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(payload)
@@ -483,7 +483,7 @@ async function savePortfolioLinks() {
     try {
         showLoading('Saving portfolio…');
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/architect/profile', {
+        const res = await fetch('https://smartarch-backend.onrender.com/api/architect/profile', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ portfolio })

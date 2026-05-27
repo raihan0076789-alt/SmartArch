@@ -5,7 +5,7 @@
   // ============================================================
 
   const AI_BACKEND_URL  = 'http://localhost:3001';  // kept for non-guarded routes (floorplan image upload)
-  const MAIN_API_URL    = 'http://localhost:5000';   // proxied AI routes (with plan guard)
+  const MAIN_API_URL    = 'https://smartarch-backend.onrender.com';   // proxied AI routes (with plan guard)
 
   let projectId = null, projectData = null;
   // Always expose projectData on window so templates.js can access it
@@ -1343,13 +1343,13 @@
           try {
             const token = localStorage.getItem('token');
             // Fetch the connection to get the client ID
-            const connRes  = await fetch(`http://localhost:5000/api/connections/my`, { headers: { 'Authorization': 'Bearer ' + token } });
+            const connRes  = await fetch(`https://smartarch-backend.onrender.com/api/connections/my`, { headers: { 'Authorization': 'Bearer ' + token } });
             const connData = await connRes.json();
             if (connData.success) {
               const conn = (connData.data || []).find(c => String(c._id) === String(ctx.connectionId));
               if (conn) {
                 const clientId = conn.client?._id || conn.client;
-               await fetch(`http://localhost:5000/api/projects/${projectId}/share`, {
+               await fetch(`https://smartarch-backend.onrender.com/api/projects/${projectId}/share`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                   body: JSON.stringify({ mode: 'connection', clientId, connectionId: ctx.connectionId, message: 'Your architect has started working on your project!' })
@@ -1357,7 +1357,7 @@
 
                 // ── NEW: if this is an additional project, link it so the stepper shows on the card ──
                 if (ctx.additionalProjectId) {
-                  await fetch(`http://localhost:5000/api/connections/${ctx.connectionId}/additional-projects/${ctx.additionalProjectId}/link`, {
+                  await fetch(`https://smartarch-backend.onrender.com/api/connections/${ctx.connectionId}/additional-projects/${ctx.additionalProjectId}/link`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ architectProjectId: projectId })
@@ -1421,7 +1421,7 @@
   // ── Refresh localStorage user from server (call after plan changes) ──
   async function _refreshUserPlan(){
     try{
-      const fresh = await fetch('http://localhost:5000/api/auth/me',{
+      const fresh = await fetch('https://smartarch-backend.onrender.com/api/auth/me',{
         headers:{ 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await fresh.json();
