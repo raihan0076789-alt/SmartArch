@@ -100,7 +100,7 @@ const userSchema = new mongoose.Schema({
 
     // Account status
     suspended:           { type: Boolean, default: false },
-    emailVerified:       { type: Boolean, default: false },
+    emailVerified:       { type: Boolean, default: true },
     emailOtp:            String,
     emailOtpExpire:      Date,
     otpResendCount:      { type: Number, default: 0 },

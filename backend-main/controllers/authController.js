@@ -23,21 +23,36 @@ exports.register = async (req, res) => {
 
         const user = await User.create({ name, email, password, company, phone });
 
-        // Generate 6-digit OTP and send
-        const otp = user.getEmailOtp();
+        // // Generate 6-digit OTP and send
+        // const otp = user.getEmailOtp();
+        // await user.save({ validateBeforeSave: false });
+
+
+        // try {
+        //     await sendEmail({
+        //         to: user.email,
+        //         subject: 'SmartArch — Your verification code',
+        //         html: verifyEmailTemplate(user.name, otp)
+        //     });
+        // } catch (emailErr) {
+        //     console.error('OTP email failed:', emailErr.message);
+        // }
+        user.emailVerified = true;
         await user.save({ validateBeforeSave: false });
 
+        const token = generateToken(user._id);
 
-        try {
-            await sendEmail({
-                to: user.email,
-                subject: 'SmartArch — Your verification code',
-                html: verifyEmailTemplate(user.name, otp)
-            });
-        } catch (emailErr) {
-            console.error('OTP email failed:', emailErr.message);
-        }
-
+        res.status(201).json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            },
+            message: 'Registration successful'
+        });
         // No JWT yet — user must enter OTP first
         res.status(201).json({
             success: true,
@@ -77,15 +92,15 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Block login until email is verified
-        if (!user.emailVerified) {
-            return res.status(403).json({
-                success: false,
-                requiresVerification: true,
-                email: user.email,
-                message: 'Please verify your email before logging in. Enter the OTP sent to your email.'
-            });
-        }
+        // // Block login until email is verified
+        // if (!user.emailVerified) {
+        //     return res.status(403).json({
+        //         success: false,
+        //         requiresVerification: true,
+        //         email: user.email,
+        //         message: 'Please verify your email before logging in. Enter the OTP sent to your email.'
+        //     });
+        // }
 
         const token = generateToken(user._id);
 

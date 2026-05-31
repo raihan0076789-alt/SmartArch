@@ -28,18 +28,8 @@ async function handleLogin(event) {
         setTimeout(() => { window.location.href = 'dashboard.html'; }, 1000);
     } catch (error) {
         hideLoading();
-        if (error.requiresVerification || (error.data && error.data.requiresVerification)) {
-            const userEmail = (error.data && error.data.email) || '';
-            if (typeof closeModal === 'function') closeModal();
-            if (typeof showVerificationPending === 'function') {
-                showVerificationPending(userEmail);
-                showToast('Check your email for the verification code.', 'info');
-            } else {
-                showToast(error.message || 'Please verify your email before logging in.', 'error');
-            }
-        } else {
-            showToast(error.message || 'Login failed', 'error');
-        }
+        showToast(error.message || 'Login failed', 'error');
+        
     }
 }
 
@@ -80,16 +70,21 @@ async function handleRegister(event) {
         const data = await api.register({ name, email, password, company });
         hideLoading();
 
-        if (data.requiresVerification) {
-            // Email verification required — show pending screen, do NOT log in
-            if (typeof closeModal === 'function') closeModal();
-            if (typeof showVerificationPending === 'function') {
-                showVerificationPending(data.email || email);
-            } else {
-                showToast('Account created! Please check your email to verify your account.', 'success');
-            }
-            return;
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        api.setToken(data.token);
+
+        showToast('Account created successfully!', 'success');
+
+        if (typeof closeModal === 'function') closeModal();
+
+        if (typeof updateUIForLoggedInUser === 'function') {
+            updateUIForLoggedInUser(data.user);
         }
+
+        setTimeout(() => {
+            window.location.href = 'dashboard.html';
+        }, 1000);
 
         // Fallback (should not reach here with current backend)
         localStorage.setItem('token', data.token);

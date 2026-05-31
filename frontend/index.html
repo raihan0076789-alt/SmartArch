@@ -3352,26 +3352,26 @@ async function handleGoogleAccessToken(accessToken) {
     document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
     // ── OTP Verification ───────────────────────────────────────────────────────
-    var _verifyPendingEmail = '';
-    var _otpTimer = null;
+    // var _verifyPendingEmail = '';
+    // var _otpTimer = null;
 
-    function showVerificationPending(email) {
-        _verifyPendingEmail = email || '';
-        var el = document.getElementById('verifyPendingEmail');
-        if (el) el.textContent = email || 'your email address';
-        // Clear boxes and error
-        document.querySelectorAll('.otp-box').forEach(function(b) { b.value = ''; b.style.borderColor = 'rgba(255,255,255,0.12)'; });
-        var err = document.getElementById('otpError'); if (err) err.style.display = 'none';
-        var overlay = document.getElementById('verifyPendingOverlay');
-        if (overlay) overlay.style.display = 'flex';
-        // Focus first box
-        setTimeout(function() {
-            var first = document.querySelector('.otp-box');
-            if (first) first.focus();
-        }, 100);
-        startOtpTimer(600); // 10 minutes
-    }
-    window.showVerificationPending = showVerificationPending;
+    // function showVerificationPending(email) {
+    //     _verifyPendingEmail = email || '';
+    //     var el = document.getElementById('verifyPendingEmail');
+    //     if (el) el.textContent = email || 'your email address';
+    //     // Clear boxes and error
+    //     document.querySelectorAll('.otp-box').forEach(function(b) { b.value = ''; b.style.borderColor = 'rgba(255,255,255,0.12)'; });
+    //     var err = document.getElementById('otpError'); if (err) err.style.display = 'none';
+    //     var overlay = document.getElementById('verifyPendingOverlay');
+    //     if (overlay) overlay.style.display = 'flex';
+    //     // Focus first box
+    //     setTimeout(function() {
+    //         var first = document.querySelector('.otp-box');
+    //         if (first) first.focus();
+    //     }, 100);
+    //     startOtpTimer(600); // 10 minutes
+    // }
+    // window.showVerificationPending = showVerificationPending;
 
     function closeVerifyPending() {
         var overlay = document.getElementById('verifyPendingOverlay');

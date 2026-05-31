@@ -26,8 +26,8 @@ router.post('/logout', protect, logout);
 router.post('/heartbeat', protect, heartbeat);
 
 // ── Email Verification ────────────────────────────────────────────────────────
-router.post('/verify-otp', verifyEmail);
-router.post('/resend-verification', resendVerification);
+// router.post('/verify-otp', verifyEmail);
+// router.post('/resend-verification', resendVerification);
 
 // ── Forgot / Reset Password ──────────────────────────────────────────────────
 router.post('/forgot-password', forgotPasswordValidation, validate, forgotPassword);
